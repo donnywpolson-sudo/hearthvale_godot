@@ -6,6 +6,12 @@ func _init() -> void:
 
 
 func _run() -> void:
+	var watchdog := create_timer(4.0)
+	watchdog.timeout.connect(func() -> void:
+		push_error("Hearthvale economy and quest smoke timed out.")
+		quit(1)
+	)
+
 	var store = preload("res://autoload/state_store.gd").new()
 	var state: Dictionary = store.create_default_state("codex_economy_quest_smoke")
 	var world = preload("res://scenes/world.tscn").instantiate()

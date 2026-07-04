@@ -1,5 +1,11 @@
 extends CanvasLayer
 
+signal bank_deposit_requested(item_id: String, quantity: int)
+signal bank_withdraw_requested(item_id: String, quantity: int)
+signal shop_buy_requested(item_id: String, price: int)
+signal shop_sell_requested(item_id: String, quantity: int)
+signal dialogue_action_requested(npc_data: Dictionary)
+
 const ITEMS_PATH := "res://data/items.json"
 const SKILLS_PATH := "res://data/skills.json"
 const QUESTS_PATH := "res://data/quests.json"
@@ -33,6 +39,11 @@ var tab_buttons: Dictionary = {}
 var panel: PanelContainer
 var panel_title: Label
 var panel_body: VBoxContainer
+var interaction_panel: PanelContainer
+var interaction_title: Label
+var interaction_body: VBoxContainer
+var active_shop_data := {}
+var active_dialogue_npc := {}
 
 
 func _ready() -> void:
@@ -40,6 +51,7 @@ func _ready() -> void:
 	skills_data = _load_json(SKILLS_PATH)
 	quests_data = _load_json(QUESTS_PATH)
 	_build_state_panel()
+	_build_interaction_panel()
 
 
 func set_account(username: String) -> void:
@@ -94,6 +106,22 @@ func run_ui_state_smoke() -> bool:
 	return account_label.text.contains(str(current_state.get("username", ""))) and panel_title.text == "Inventory"
 
 
+func run_interaction_panel_smoke() -> bool:
+	if current_state.is_empty():
+		return false
+	show_bank_panel()
+	if interaction_title.text != "Bank" or interaction_body.get_child_count() == 0:
+		return false
+	show_shop_panel({"name": "General Store", "stock": [{"item_id": "trail_ration", "price": 3}]})
+	if interaction_title.text != "General Store" or interaction_body.get_child_count() == 0:
+		return false
+	show_dialogue_panel({"name": "Guide", "quest_id": "starter_path"}, {"display_name": "Starter path"}, {}, "Guide: Welcome.", "Start")
+	if interaction_title.text != "Guide" or interaction_body.get_child_count() == 0:
+		return false
+	hide_interaction_panel()
+	return not interaction_panel.visible
+
+
 func _build_state_panel() -> void:
 	panel = PanelContainer.new()
 	panel.name = "StatePanel"
@@ -144,6 +172,226 @@ func _build_state_panel() -> void:
 	scroll.add_child(panel_body)
 
 	select_tab(active_tab)
+
+
+func _build_interaction_panel() -> void:
+	interaction_panel = PanelContainer.new()
+	interaction_panel.name = "InteractionPanel"
+	interaction_panel.visible = false
+	interaction_panel.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	interaction_panel.anchor_left = 0.0
+	interaction_panel.anchor_right = 0.0
+	interaction_panel.anchor_top = 0.0
+	interaction_panel.anchor_bottom = 1.0
+	interaction_panel.offset_left = 10.0
+	interaction_panel.offset_top = 58.0
+	interaction_panel.offset_right = 382.0
+	interaction_panel.offset_bottom = -74.0
+	root_control.add_child(interaction_panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	interaction_panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 8)
+	margin.add_child(stack)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	stack.add_child(header)
+
+	interaction_title = Label.new()
+	interaction_title.text = "Interaction"
+	interaction_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(interaction_title)
+
+	var close_button := Button.new()
+	close_button.text = "Close"
+	close_button.pressed.connect(hide_interaction_panel)
+	header.add_child(close_button)
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(340, 360)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	stack.add_child(scroll)
+
+	interaction_body = VBoxContainer.new()
+	interaction_body.add_theme_constant_override("separation", 6)
+	interaction_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(interaction_body)
+
+
+func hide_interaction_panel() -> void:
+	if interaction_panel != null:
+		interaction_panel.visible = false
+
+
+func interaction_panel_is_visible() -> bool:
+	return interaction_panel != null and interaction_panel.visible
+
+
+func interaction_panel_title_text() -> String:
+	return interaction_title.text if interaction_title != null else ""
+
+
+func interaction_panel_row_count() -> int:
+	return interaction_body.get_child_count() if interaction_body != null else 0
+
+
+func show_bank_panel() -> void:
+	_clear_interaction_body()
+	interaction_title.text = "Bank"
+	interaction_panel.visible = true
+	var inventory := _stack_mapping(current_state.get("inventory", {}))
+	var bank := _stack_mapping(current_state.get("bank", {}))
+	_add_interaction_section("Inventory")
+	if inventory.is_empty():
+		_add_interaction_muted("Nothing to deposit")
+	else:
+		for item_id in _sorted_item_ids(inventory):
+			_add_bank_inventory_row(item_id, int(inventory[item_id]))
+	_add_interaction_section("Stored")
+	if bank.is_empty():
+		_add_interaction_muted("Bank is empty")
+	else:
+		for item_id in _sorted_item_ids(bank):
+			_add_bank_storage_row(item_id, int(bank[item_id]))
+
+
+func show_shop_panel(shop_data: Dictionary) -> void:
+	active_shop_data = shop_data.duplicate(true)
+	_clear_interaction_body()
+	interaction_title.text = str(shop_data.get("name", "Shop"))
+	interaction_panel.visible = true
+	_add_interaction_row("Coins: %d" % int(_stack_mapping(current_state.get("inventory", {})).get("coins", 0)))
+	var stock = shop_data.get("stock", [])
+	_add_interaction_section("Buy")
+	if not (stock is Array) or stock.is_empty():
+		_add_interaction_muted("No stock available")
+	else:
+		for raw_item in stock:
+			if raw_item is Dictionary:
+				_add_shop_stock_row(str(raw_item.get("item_id", "")), int(raw_item.get("price", 0)))
+	_add_interaction_section("Sell")
+	var inventory := _stack_mapping(current_state.get("inventory", {}))
+	var sellable_count := 0
+	for item_id in _sorted_item_ids(inventory):
+		if item_id == "coins":
+			continue
+		var price := _sell_price(item_id)
+		if price <= 0:
+			continue
+		sellable_count += 1
+		_add_shop_inventory_row(item_id, int(inventory[item_id]), price)
+	if sellable_count == 0:
+		_add_interaction_muted("No sellable items")
+
+
+func show_dialogue_panel(npc_data: Dictionary, definition: Dictionary, quest_state: Dictionary, message: String, action_label: String) -> void:
+	active_dialogue_npc = npc_data.duplicate(true)
+	_clear_interaction_body()
+	interaction_title.text = str(npc_data.get("label", npc_data.get("name", "NPC")))
+	interaction_panel.visible = true
+	_add_interaction_row(message)
+	if not definition.is_empty():
+		_add_interaction_section(str(definition.get("display_name", "Quest")))
+		var status: String = "Complete" if bool(quest_state.get("completed", false)) else ("Started" if bool(quest_state.get("started", false)) else "Not started")
+		_add_interaction_muted("Status: %s" % status)
+	if not action_label.is_empty() and action_label != "Close":
+		var action_button := Button.new()
+		action_button.text = action_label
+		action_button.pressed.connect(func() -> void: dialogue_action_requested.emit(active_dialogue_npc.duplicate(true)))
+		interaction_body.add_child(action_button)
+
+
+func _clear_interaction_body() -> void:
+	if interaction_body == null:
+		return
+	for child in interaction_body.get_children():
+		child.queue_free()
+
+
+func _add_bank_inventory_row(item_id: String, quantity: int) -> void:
+	var row := _new_interaction_row("%s x%d" % [_item_name(item_id), quantity])
+	var one := Button.new()
+	one.text = "Deposit 1"
+	one.pressed.connect(func() -> void: bank_deposit_requested.emit(item_id, 1))
+	row.add_child(one)
+	var all := Button.new()
+	all.text = "All"
+	all.pressed.connect(func() -> void: bank_deposit_requested.emit(item_id, 0))
+	row.add_child(all)
+
+
+func _add_bank_storage_row(item_id: String, quantity: int) -> void:
+	var row := _new_interaction_row("%s x%d" % [_item_name(item_id), quantity])
+	var one := Button.new()
+	one.text = "Withdraw 1"
+	one.pressed.connect(func() -> void: bank_withdraw_requested.emit(item_id, 1))
+	row.add_child(one)
+	var all := Button.new()
+	all.text = "All"
+	all.pressed.connect(func() -> void: bank_withdraw_requested.emit(item_id, 0))
+	row.add_child(all)
+
+
+func _add_shop_stock_row(item_id: String, price: int) -> void:
+	if item_id.is_empty() or price <= 0:
+		return
+	var row := _new_interaction_row("%s  %d coins" % [_item_name(item_id), price])
+	var button := Button.new()
+	button.text = "Buy"
+	button.pressed.connect(func() -> void: shop_buy_requested.emit(item_id, price))
+	row.add_child(button)
+
+
+func _add_shop_inventory_row(item_id: String, quantity: int, price: int) -> void:
+	var row := _new_interaction_row("%s x%d  %d ea" % [_item_name(item_id), quantity, price])
+	var one := Button.new()
+	one.text = "Sell 1"
+	one.pressed.connect(func() -> void: shop_sell_requested.emit(item_id, 1))
+	row.add_child(one)
+	var all := Button.new()
+	all.text = "All"
+	all.pressed.connect(func() -> void: shop_sell_requested.emit(item_id, 0))
+	row.add_child(all)
+
+
+func _new_interaction_row(text: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	interaction_body.add_child(row)
+	var label := Label.new()
+	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(label)
+	return row
+
+
+func _add_interaction_section(text: String) -> void:
+	var label := Label.new()
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	interaction_body.add_child(label)
+
+
+func _add_interaction_muted(text: String) -> void:
+	var label := Label.new()
+	label.text = text
+	label.modulate = Color(0.72, 0.72, 0.72, 1.0)
+	interaction_body.add_child(label)
+
+
+func _add_interaction_row(text: String) -> void:
+	var label := Label.new()
+	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	interaction_body.add_child(label)
 
 
 func _add_tab_button(parent: HBoxContainer, tab_id: String, label: String) -> void:
@@ -495,6 +743,13 @@ func _is_stackable_item(item_id: String) -> bool:
 	if definition is Dictionary and definition.has("stackable"):
 		return bool(definition["stackable"])
 	return item_id == "coins"
+
+
+func _sell_price(item_id: String) -> int:
+	var definition = items_data.get(item_id, {})
+	if definition is Dictionary:
+		return int(definition.get("sell_price", 0))
+	return 0
 
 
 func _array_to_tile(value, fallback: Vector2i) -> Vector2i:
