@@ -1,0 +1,1891 @@
+{
+  "width": 100,
+  "height": 100,
+  "player_start": [
+    15,
+    15
+  ],
+  "camera": {
+    "center_x": 15,
+    "center_y": 15,
+    "heading": 45,
+    "zoom": 22
+  },
+  "dirt_tiles": [
+    [
+      15,
+      0
+    ],
+    [
+      15,
+      1
+    ],
+    [
+      15,
+      2
+    ],
+    [
+      15,
+      3
+    ],
+    [
+      15,
+      4
+    ],
+    [
+      15,
+      5
+    ],
+    [
+      15,
+      6
+    ],
+    [
+      15,
+      7
+    ],
+    [
+      15,
+      8
+    ],
+    [
+      15,
+      9
+    ],
+    [
+      15,
+      10
+    ],
+    [
+      15,
+      11
+    ],
+    [
+      15,
+      12
+    ],
+    [
+      15,
+      13
+    ],
+    [
+      15,
+      14
+    ],
+    [
+      15,
+      15
+    ],
+    [
+      15,
+      16
+    ],
+    [
+      15,
+      17
+    ],
+    [
+      15,
+      18
+    ],
+    [
+      15,
+      19
+    ],
+    [
+      15,
+      20
+    ],
+    [
+      15,
+      21
+    ],
+    [
+      15,
+      22
+    ],
+    [
+      15,
+      23
+    ],
+    [
+      15,
+      24
+    ],
+    [
+      15,
+      25
+    ],
+    [
+      15,
+      26
+    ],
+    [
+      15,
+      27
+    ],
+    [
+      15,
+      28
+    ],
+    [
+      15,
+      29
+    ],
+    [
+      8,
+      15
+    ],
+    [
+      9,
+      15
+    ],
+    [
+      10,
+      15
+    ],
+    [
+      11,
+      15
+    ],
+    [
+      12,
+      15
+    ],
+    [
+      13,
+      15
+    ],
+    [
+      14,
+      15
+    ],
+    [
+      16,
+      15
+    ],
+    [
+      17,
+      15
+    ],
+    [
+      18,
+      15
+    ],
+    [
+      19,
+      15
+    ],
+    [
+      20,
+      15
+    ],
+    [
+      21,
+      15
+    ],
+    [
+      22,
+      15
+    ],
+    [
+      23,
+      15
+    ]
+  ],
+  "water_tiles": [
+    [
+      6,
+      17
+    ],
+    [
+      7,
+      17
+    ],
+    [
+      8,
+      17
+    ],
+    [
+      9,
+      17
+    ],
+    [
+      6,
+      18
+    ],
+    [
+      7,
+      18
+    ],
+    [
+      8,
+      18
+    ],
+    [
+      9,
+      18
+    ],
+    [
+      6,
+      19
+    ],
+    [
+      7,
+      19
+    ],
+    [
+      8,
+      19
+    ],
+    [
+      9,
+      19
+    ],
+    [
+      6,
+      20
+    ],
+    [
+      7,
+      20
+    ],
+    [
+      8,
+      20
+    ],
+    [
+      9,
+      20
+    ]
+  ],
+  "blocked_tiles": [
+    [
+      5,
+      5
+    ],
+    [
+      6,
+      5
+    ],
+    [
+      7,
+      5
+    ],
+    [
+      5,
+      6
+    ],
+    [
+      7,
+      6
+    ],
+    [
+      5,
+      7
+    ],
+    [
+      6,
+      7
+    ],
+    [
+      7,
+      7
+    ],
+    [
+      24,
+      21
+    ],
+    [
+      25,
+      21
+    ],
+    [
+      24,
+      22
+    ]
+  ],
+  "resource_nodes": [
+    {
+      "node_id": "tree_01",
+      "node_type": "tree",
+      "display_name": "Tree",
+      "skill_id": "woodcutting",
+      "required_level": 1,
+      "xp_reward": 28,
+      "item_reward": "logs",
+      "quantity_reward": 1,
+      "secondary_item_reward": "sap_glob",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.2,
+      "depleted_state": "stump",
+      "respawn_seconds": 20,
+      "base_gather_seconds": 2.0,
+      "blocks_movement": true,
+      "position": [
+        10,
+        11
+      ]
+    },
+    {
+      "node_id": "oak_tree_01",
+      "node_type": "oak_tree",
+      "display_name": "Oak tree",
+      "skill_id": "woodcutting",
+      "required_level": 15,
+      "xp_reward": 38,
+      "item_reward": "oak_logs",
+      "quantity_reward": 1,
+      "depleted_state": "stump",
+      "respawn_seconds": 24,
+      "base_gather_seconds": 2.6,
+      "blocks_movement": true,
+      "position": [
+        11,
+        11
+      ]
+    },
+    {
+      "node_id": "willow_tree_01",
+      "node_type": "willow_tree",
+      "display_name": "Willow tree",
+      "skill_id": "woodcutting",
+      "required_level": 30,
+      "xp_reward": 68,
+      "item_reward": "willow_logs",
+      "quantity_reward": 1,
+      "depleted_state": "stump",
+      "respawn_seconds": 28,
+      "base_gather_seconds": 3.2,
+      "blocks_movement": true,
+      "position": [
+        18,
+        12
+      ]
+    },
+    {
+      "node_id": "maple_tree_01",
+      "node_type": "maple_tree",
+      "display_name": "Maple tree",
+      "skill_id": "woodcutting",
+      "required_level": 45,
+      "xp_reward": 100,
+      "item_reward": "maple_logs",
+      "quantity_reward": 1,
+      "depleted_state": "stump",
+      "respawn_seconds": 32,
+      "base_gather_seconds": 3.8,
+      "blocks_movement": true,
+      "position": [
+        19,
+        12
+      ]
+    },
+    {
+      "node_id": "yew_tree_01",
+      "node_type": "yew_tree",
+      "display_name": "Yew tree",
+      "skill_id": "woodcutting",
+      "required_level": 60,
+      "xp_reward": 175,
+      "item_reward": "yew_logs",
+      "quantity_reward": 1,
+      "depleted_state": "stump",
+      "respawn_seconds": 36,
+      "base_gather_seconds": 4.6,
+      "blocks_movement": true,
+      "position": [
+        21,
+        14
+      ]
+    },
+    {
+      "node_id": "magic_tree_01",
+      "node_type": "magic_tree",
+      "display_name": "Magic tree",
+      "skill_id": "woodcutting",
+      "required_level": 75,
+      "xp_reward": 250,
+      "item_reward": "magic_logs",
+      "quantity_reward": 1,
+      "depleted_state": "stump",
+      "respawn_seconds": 45,
+      "base_gather_seconds": 5.8,
+      "blocks_movement": true,
+      "position": [
+        22,
+        13
+      ]
+    },
+    {
+      "node_id": "redwood_tree_01",
+      "node_type": "redwood_tree",
+      "display_name": "Redwood tree",
+      "skill_id": "woodcutting",
+      "required_level": 90,
+      "xp_reward": 380,
+      "item_reward": "redwood_logs",
+      "quantity_reward": 1,
+      "depleted_state": "stump",
+      "respawn_seconds": 60,
+      "base_gather_seconds": 7.0,
+      "blocks_movement": true,
+      "position": [
+        20,
+        12
+      ]
+    },
+    {
+      "node_id": "copper_rock_01",
+      "node_type": "copper_rock",
+      "display_name": "Copper rock",
+      "skill_id": "mining",
+      "required_level": 1,
+      "xp_reward": 20,
+      "item_reward": "copper_ore",
+      "quantity_reward": 1,
+      "secondary_item_reward": "gem_shard",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.14,
+      "depleted_state": "depleted_rock",
+      "respawn_seconds": 25,
+      "base_gather_seconds": 2.2,
+      "blocks_movement": true,
+      "position": [
+        20,
+        17
+      ]
+    },
+    {
+      "node_id": "iron_rock_01",
+      "node_type": "iron_rock",
+      "display_name": "Iron rock",
+      "skill_id": "mining",
+      "required_level": 15,
+      "xp_reward": 35,
+      "item_reward": "iron_ore",
+      "quantity_reward": 1,
+      "depleted_state": "depleted_rock",
+      "respawn_seconds": 30,
+      "base_gather_seconds": 2.8,
+      "blocks_movement": true,
+      "position": [
+        21,
+        17
+      ]
+    },
+    {
+      "node_id": "coal_rock_01",
+      "node_type": "coal_rock",
+      "display_name": "Coal rock",
+      "skill_id": "mining",
+      "required_level": 30,
+      "xp_reward": 50,
+      "item_reward": "coal",
+      "quantity_reward": 1,
+      "depleted_state": "depleted_rock",
+      "respawn_seconds": 35,
+      "base_gather_seconds": 3.4,
+      "blocks_movement": true,
+      "position": [
+        22,
+        18
+      ]
+    },
+    {
+      "node_id": "mithril_rock_01",
+      "node_type": "mithril_rock",
+      "display_name": "Mithril rock",
+      "skill_id": "mining",
+      "required_level": 55,
+      "xp_reward": 80,
+      "item_reward": "mithril_ore",
+      "quantity_reward": 1,
+      "depleted_state": "depleted_rock",
+      "respawn_seconds": 40,
+      "base_gather_seconds": 4.1,
+      "blocks_movement": true,
+      "position": [
+        23,
+        18
+      ]
+    },
+    {
+      "node_id": "adamant_rock_01",
+      "node_type": "adamant_rock",
+      "display_name": "Adamant rock",
+      "skill_id": "mining",
+      "required_level": 70,
+      "xp_reward": 120,
+      "item_reward": "adamant_ore",
+      "quantity_reward": 1,
+      "depleted_state": "depleted_rock",
+      "respawn_seconds": 45,
+      "base_gather_seconds": 5.0,
+      "blocks_movement": true,
+      "position": [
+        22,
+        19
+      ]
+    },
+    {
+      "node_id": "starsteel_rock_01",
+      "node_type": "starsteel_rock",
+      "display_name": "Starsteel rock",
+      "skill_id": "mining",
+      "required_level": 85,
+      "xp_reward": 200,
+      "item_reward": "starsteel_ore",
+      "quantity_reward": 1,
+      "depleted_state": "depleted_rock",
+      "respawn_seconds": 60,
+      "base_gather_seconds": 6.5,
+      "blocks_movement": true,
+      "position": [
+        23,
+        19
+      ]
+    },
+    {
+      "node_id": "shrimp_spot_01",
+      "node_type": "shrimp_spot",
+      "display_name": "Shrimp shoal",
+      "skill_id": "fishing",
+      "required_level": 1,
+      "xp_reward": 15,
+      "item_reward": "raw_shrimp",
+      "quantity_reward": 1,
+      "secondary_item_reward": "tide_roe",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.16,
+      "depleted_state": "quiet_water",
+      "respawn_seconds": 15,
+      "base_gather_seconds": 1.8,
+      "blocks_movement": false,
+      "position": [
+        9,
+        18
+      ]
+    },
+    {
+      "node_id": "trout_spot_01",
+      "node_type": "trout_spot",
+      "display_name": "Trout run",
+      "skill_id": "fishing",
+      "required_level": 20,
+      "xp_reward": 50,
+      "item_reward": "raw_trout",
+      "quantity_reward": 1,
+      "depleted_state": "quiet_water",
+      "respawn_seconds": 18,
+      "base_gather_seconds": 2.2,
+      "blocks_movement": false,
+      "position": [
+        9,
+        19
+      ]
+    },
+    {
+      "node_id": "salmon_spot_01",
+      "node_type": "salmon_spot",
+      "display_name": "Salmon bend",
+      "skill_id": "fishing",
+      "required_level": 30,
+      "xp_reward": 70,
+      "item_reward": "raw_salmon",
+      "quantity_reward": 1,
+      "depleted_state": "quiet_water",
+      "respawn_seconds": 21,
+      "base_gather_seconds": 2.7,
+      "blocks_movement": false,
+      "position": [
+        9,
+        20
+      ]
+    },
+    {
+      "node_id": "lobster_spot_01",
+      "node_type": "lobster_spot",
+      "display_name": "Lobster ledge",
+      "skill_id": "fishing",
+      "required_level": 40,
+      "xp_reward": 90,
+      "item_reward": "raw_lobster",
+      "quantity_reward": 1,
+      "depleted_state": "quiet_water",
+      "respawn_seconds": 24,
+      "base_gather_seconds": 3.3,
+      "blocks_movement": false,
+      "position": [
+        8,
+        17
+      ]
+    },
+    {
+      "node_id": "swordfish_spot_01",
+      "node_type": "swordfish_spot",
+      "display_name": "Swordfish drop",
+      "skill_id": "fishing",
+      "required_level": 50,
+      "xp_reward": 110,
+      "item_reward": "raw_swordfish",
+      "quantity_reward": 1,
+      "depleted_state": "quiet_water",
+      "respawn_seconds": 28,
+      "base_gather_seconds": 4.0,
+      "blocks_movement": false,
+      "position": [
+        7,
+        17
+      ]
+    },
+    {
+      "node_id": "monkfish_spot_01",
+      "node_type": "monkfish_spot",
+      "display_name": "Monkfish cove",
+      "skill_id": "fishing",
+      "required_level": 62,
+      "xp_reward": 130,
+      "item_reward": "raw_monkfish",
+      "quantity_reward": 1,
+      "depleted_state": "quiet_water",
+      "respawn_seconds": 32,
+      "base_gather_seconds": 4.5,
+      "blocks_movement": false,
+      "position": [
+        6,
+        18
+      ]
+    },
+    {
+      "node_id": "shark_spot_01",
+      "node_type": "shark_spot",
+      "display_name": "Shark trench",
+      "skill_id": "fishing",
+      "required_level": 76,
+      "xp_reward": 180,
+      "item_reward": "raw_shark",
+      "quantity_reward": 1,
+      "depleted_state": "quiet_water",
+      "respawn_seconds": 40,
+      "base_gather_seconds": 5.5,
+      "blocks_movement": false,
+      "position": [
+        6,
+        19
+      ]
+    },
+    {
+      "node_id": "anglerfish_spot_01",
+      "node_type": "anglerfish_spot",
+      "display_name": "Anglerfish abyss",
+      "skill_id": "fishing",
+      "required_level": 82,
+      "xp_reward": 220,
+      "item_reward": "raw_anglerfish",
+      "quantity_reward": 1,
+      "depleted_state": "quiet_water",
+      "respawn_seconds": 48,
+      "base_gather_seconds": 6.2,
+      "blocks_movement": false,
+      "position": [
+        6,
+        20
+      ]
+    },
+    {
+      "node_id": "apexfish_spot_01",
+      "node_type": "anglerfish_spot",
+      "display_name": "Apex trench",
+      "skill_id": "fishing",
+      "required_level": 90,
+      "xp_reward": 260,
+      "item_reward": "raw_apexfish",
+      "quantity_reward": 1,
+      "depleted_state": "quiet_water",
+      "respawn_seconds": 56,
+      "base_gather_seconds": 7.0,
+      "blocks_movement": false,
+      "position": [
+        8,
+        20
+      ]
+    },
+    {
+      "node_id": "tin_rock_01",
+      "node_type": "tin_rock",
+      "display_name": "Tin rock",
+      "skill_id": "mining",
+      "required_level": 1,
+      "xp_reward": 18,
+      "item_reward": "tin_ore",
+      "quantity_reward": 1,
+      "depleted_state": "depleted_rock",
+      "respawn_seconds": 22,
+      "base_gather_seconds": 2.0,
+      "blocks_movement": true,
+      "position": [
+        21,
+        18
+      ]
+    },
+    {
+      "node_id": "moon_herb_patch_01",
+      "node_type": "herb_patch",
+      "display_name": "Meadow herb",
+      "skill_id": "herbalism",
+      "required_level": 1,
+      "xp_reward": 20,
+      "item_reward": "moon_herb",
+      "quantity_reward": 1,
+      "secondary_item_reward": "bloom_pollen",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.18,
+      "depleted_state": "withered_patch",
+      "respawn_seconds": 18,
+      "base_gather_seconds": 1.6,
+      "blocks_movement": false,
+      "position": [
+        13,
+        10
+      ]
+    },
+    {
+      "node_id": "briarleaf_patch_01",
+      "node_type": "herb_patch",
+      "display_name": "Briarleaf",
+      "skill_id": "herbalism",
+      "required_level": 15,
+      "xp_reward": 38,
+      "item_reward": "briarleaf",
+      "quantity_reward": 1,
+      "depleted_state": "withered_patch",
+      "respawn_seconds": 24,
+      "base_gather_seconds": 2.1,
+      "blocks_movement": false,
+      "position": [
+        14,
+        10
+      ]
+    },
+    {
+      "node_id": "ambercap_patch_01",
+      "node_type": "herb_patch",
+      "display_name": "Ambercap",
+      "skill_id": "herbalism",
+      "required_level": 35,
+      "xp_reward": 74,
+      "item_reward": "ambercap",
+      "quantity_reward": 1,
+      "depleted_state": "withered_patch",
+      "respawn_seconds": 34,
+      "base_gather_seconds": 2.9,
+      "blocks_movement": false,
+      "position": [
+        16,
+        10
+      ]
+    },
+    {
+      "node_id": "sunpetal_patch_01",
+      "node_type": "herb_patch",
+      "display_name": "Sunpetal",
+      "skill_id": "herbalism",
+      "required_level": 50,
+      "xp_reward": 100,
+      "item_reward": "sunpetal",
+      "quantity_reward": 1,
+      "depleted_state": "withered_patch",
+      "respawn_seconds": 40,
+      "base_gather_seconds": 3.2,
+      "blocks_movement": false,
+      "position": [
+        15,
+        10
+      ]
+    },
+    {
+      "node_id": "heartroot_patch_01",
+      "node_type": "herb_patch",
+      "display_name": "Heartroot",
+      "skill_id": "herbalism",
+      "required_level": 60,
+      "xp_reward": 132,
+      "item_reward": "heartroot",
+      "quantity_reward": 1,
+      "depleted_state": "withered_patch",
+      "respawn_seconds": 48,
+      "base_gather_seconds": 4.1,
+      "blocks_movement": false,
+      "position": [
+        17,
+        10
+      ]
+    },
+    {
+      "node_id": "lumenbloom_patch_01",
+      "node_type": "herb_patch",
+      "display_name": "Lumen bloom",
+      "skill_id": "herbalism",
+      "required_level": 75,
+      "xp_reward": 174,
+      "item_reward": "lumenbloom",
+      "quantity_reward": 1,
+      "depleted_state": "withered_patch",
+      "respawn_seconds": 56,
+      "base_gather_seconds": 4.7,
+      "blocks_movement": false,
+      "position": [
+        18,
+        10
+      ]
+    },
+    {
+      "node_id": "foraging_bush_01",
+      "node_type": "bush",
+      "display_name": "Wild berry bush",
+      "skill_id": "foraging",
+      "required_level": 1,
+      "xp_reward": 12,
+      "item_reward": "wild_berries",
+      "quantity_reward": 1,
+      "secondary_item_reward": "seed_bundle",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.24,
+      "depleted_state": "picked_bush",
+      "respawn_seconds": 30,
+      "base_gather_seconds": 1.4,
+      "blocks_movement": false,
+      "position": [
+        13,
+        20
+      ]
+    },
+    {
+      "node_id": "foraging_bush_02",
+      "node_type": "bush",
+      "display_name": "Shadecap bush",
+      "skill_id": "foraging",
+      "required_level": 20,
+      "xp_reward": 24,
+      "item_reward": "shadecaps",
+      "quantity_reward": 1,
+      "depleted_state": "picked_bush",
+      "respawn_seconds": 45,
+      "base_gather_seconds": 1.9,
+      "blocks_movement": false,
+      "position": [
+        14,
+        21
+      ]
+    },
+    {
+      "node_id": "bog_reed_patch_01",
+      "node_type": "bush",
+      "display_name": "Bog reed patch",
+      "skill_id": "foraging",
+      "required_level": 25,
+      "xp_reward": 30,
+      "item_reward": "bog_reeds",
+      "quantity_reward": 1,
+      "depleted_state": "picked_bush",
+      "respawn_seconds": 36,
+      "base_gather_seconds": 1.8,
+      "blocks_movement": false,
+      "position": [
+        35,
+        21
+      ]
+    },
+    {
+      "node_id": "fen_reed_patch_01",
+      "node_type": "bush",
+      "display_name": "Fen reed patch",
+      "skill_id": "foraging",
+      "required_level": 32,
+      "xp_reward": 36,
+      "item_reward": "fen_reeds",
+      "quantity_reward": 1,
+      "secondary_item_reward": "seed_bundle",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.2,
+      "depleted_state": "picked_bush",
+      "respawn_seconds": 40,
+      "base_gather_seconds": 2.0,
+      "blocks_movement": false,
+      "position": [
+        44,
+        20
+      ]
+    },
+    {
+      "node_id": "foraging_mushroom_01",
+      "node_type": "mushroom",
+      "display_name": "Duskcap patch",
+      "skill_id": "foraging",
+      "required_level": 40,
+      "xp_reward": 40,
+      "item_reward": "duskcaps",
+      "quantity_reward": 1,
+      "depleted_state": "picked_patch",
+      "respawn_seconds": 60,
+      "base_gather_seconds": 2.5,
+      "blocks_movement": false,
+      "position": [
+        18,
+        20
+      ]
+    },
+    {
+      "node_id": "foraging_bush_03",
+      "node_type": "bush",
+      "display_name": "Sunberry bush",
+      "skill_id": "foraging",
+      "required_level": 55,
+      "xp_reward": 52,
+      "item_reward": "sunberries",
+      "quantity_reward": 1,
+      "depleted_state": "picked_bush",
+      "respawn_seconds": 72,
+      "base_gather_seconds": 2.8,
+      "blocks_movement": false,
+      "position": [
+        20,
+        20
+      ]
+    },
+    {
+      "node_id": "foraging_mushroom_02",
+      "node_type": "mushroom",
+      "display_name": "Mooncap patch",
+      "skill_id": "foraging",
+      "required_level": 70,
+      "xp_reward": 64,
+      "item_reward": "mooncaps",
+      "quantity_reward": 1,
+      "depleted_state": "picked_patch",
+      "respawn_seconds": 90,
+      "base_gather_seconds": 3.1,
+      "blocks_movement": false,
+      "position": [
+        22,
+        21
+      ]
+    },
+    {
+      "node_id": "foraging_bush_04",
+      "node_type": "bush",
+      "display_name": "Nightberry bush",
+      "skill_id": "foraging",
+      "required_level": 85,
+      "xp_reward": 92,
+      "item_reward": "nightberries",
+      "quantity_reward": 1,
+      "depleted_state": "picked_bush",
+      "respawn_seconds": 96,
+      "base_gather_seconds": 3.5,
+      "blocks_movement": false,
+      "position": [
+        24,
+        21
+      ]
+    }
+  ],
+  "decorations": [
+    {
+      "id": "village_signpost_01",
+      "kind": "signpost",
+      "display_name": "Crossroads Sign",
+      "position": [
+        14,
+        11
+      ],
+      "rotation": -8
+    },
+    {
+      "id": "village_crate_01",
+      "kind": "crate",
+      "position": [
+        12,
+        12
+      ],
+      "rotation": 12
+    },
+    {
+      "id": "village_barrel_01",
+      "kind": "barrel",
+      "position": [
+        18,
+        12
+      ],
+      "rotation": -14
+    },
+    {
+      "id": "village_lamp_01",
+      "kind": "lamp",
+      "position": [
+        17,
+        11
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "village_well_01",
+      "kind": "well",
+      "position": [
+        15,
+        11
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "practice_noticeboard_01",
+      "kind": "noticeboard",
+      "display_name": "Practice Board",
+      "position": [
+        14,
+        15
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "practice_tool_rack_01",
+      "kind": "tool_rack",
+      "display_name": "Practice Rack",
+      "position": [
+        13,
+        14
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "practice_supply_cart_01",
+      "kind": "supply_cart",
+      "display_name": "Practice Cart",
+      "position": [
+        13,
+        15
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "practice_banner_01",
+      "kind": "banner",
+      "display_name": "Practice Banner",
+      "position": [
+        12,
+        13
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "practice_lamp_01",
+      "kind": "lamp",
+      "display_name": "Practice Lamp",
+      "position": [
+        14,
+        13
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "practice_guidepost_01",
+      "kind": "guidepost",
+      "display_name": "Practice Guidepost",
+      "position": [
+        16,
+        12
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "practice_fence_west_01",
+      "kind": "fence",
+      "position": [
+        15,
+        14
+      ],
+      "rotation": 90
+    },
+    {
+      "id": "practice_fence_east_01",
+      "kind": "fence",
+      "position": [
+        17,
+        14
+      ],
+      "rotation": 90
+    },
+    {
+      "id": "market_stall_01",
+      "kind": "stall",
+      "position": [
+        24,
+        15
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "river_dock_01",
+      "kind": "dock",
+      "position": [
+        10,
+        16
+      ],
+      "rotation": -8
+    },
+    {
+      "id": "river_bush_01",
+      "kind": "bush",
+      "position": [
+        11,
+        17
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "river_fish_rack_01",
+      "kind": "fish_rack",
+      "position": [
+        12,
+        18
+      ],
+      "rotation": 4
+    },
+    {
+      "id": "river_skiff_01",
+      "kind": "boat",
+      "position": [
+        11,
+        16
+      ],
+      "rotation": -12
+    },
+    {
+      "id": "river_bridge_01",
+      "kind": "bridge",
+      "position": [
+        7,
+        18
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "river_campfire_01",
+      "kind": "campfire",
+      "position": [
+        13,
+        18
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "river_fence_01",
+      "kind": "fence",
+      "position": [
+        10,
+        17
+      ],
+      "rotation": 90
+    },
+    {
+      "id": "river_fence_02",
+      "kind": "fence",
+      "position": [
+        10,
+        18
+      ],
+      "rotation": 90
+    },
+    {
+      "id": "river_fence_03",
+      "kind": "fence",
+      "position": [
+        10,
+        19
+      ],
+      "rotation": 90
+    },
+    {
+      "id": "river_mushroom_01",
+      "kind": "mushroom",
+      "position": [
+        11,
+        21
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "river_bush_02",
+      "kind": "bush",
+      "position": [
+        12,
+        20
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "river_reeds_01",
+      "kind": "reeds",
+      "position": [
+        11,
+        20
+      ],
+      "rotation": 8
+    },
+    {
+      "id": "river_reeds_02",
+      "kind": "reeds",
+      "position": [
+        12,
+        19
+      ],
+      "rotation": -12
+    },
+    {
+      "id": "outskirts_ruins_01",
+      "kind": "ruins",
+      "position": [
+        24,
+        17
+      ],
+      "rotation": 12
+    },
+    {
+      "id": "mire_signpost_01",
+      "kind": "signpost",
+      "display_name": "Mire Outpost Sign",
+      "position": [
+        33,
+        18
+      ],
+      "rotation": 6
+    },
+    {
+      "id": "mire_reeds_01",
+      "kind": "reeds",
+      "display_name": "Mire reeds",
+      "position": [
+        35,
+        20
+      ],
+      "rotation": -10
+    },
+    {
+      "id": "mire_campfire_01",
+      "kind": "campfire",
+      "display_name": "Mire campfire",
+      "position": [
+        38,
+        19
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "mire_bridge_01",
+      "kind": "bridge",
+      "display_name": "Mire crossing",
+      "position": [
+        40,
+        20
+      ],
+      "rotation": 8
+    },
+    {
+      "id": "fen_signpost_01",
+      "kind": "signpost",
+      "display_name": "Fen edge sign",
+      "position": [
+        43,
+        19
+      ],
+      "rotation": 4
+    }
+  ],
+  "shop": {
+    "id": "shop_01",
+    "name": "General Store",
+    "tile": [
+      23,
+      15
+    ],
+    "stock": [
+      {
+        "item_id": "trail_ration",
+        "price": 3
+      },
+      {
+        "item_id": "bronze_axe",
+        "price": 20
+      },
+      {
+        "item_id": "bronze_pickaxe",
+        "price": 20
+      },
+      {
+        "item_id": "fishing_rod",
+        "price": 18
+      },
+      {
+        "item_id": "small_fishing_net",
+        "price": 16
+      },
+      {
+        "item_id": "training_bow",
+        "price": 28
+      },
+      {
+        "item_id": "training_staff",
+        "price": 28
+      },
+      {
+        "item_id": "cooking_pot",
+        "price": 15
+      },
+      {
+        "item_id": "moon_potion",
+        "price": 24
+      },
+      {
+        "item_id": "mire_tonic",
+        "price": 38
+      },
+      {
+        "item_id": "fen_tonic",
+        "price": 34
+      }
+    ]
+  },
+  "bank": {
+    "id": "bank_01",
+    "name": "Bank",
+    "tile": [
+      13,
+      14
+    ]
+  },
+  "cooking_range": {
+    "id": "cooking_range_01",
+    "name": "Cooking range",
+    "tile": [
+      14,
+      14
+    ]
+  },
+  "mobs": [
+    {
+      "mob_id": "rat_01",
+      "display_name": "Rat",
+      "level": 1,
+      "hitpoints": 2,
+      "attack_seconds": 1.0,
+      "respawn_seconds": 8,
+      "attack_style": "melee",
+      "attack_range": 1,
+      "visual_kind": "rat",
+      "position": [
+        17,
+        16
+      ],
+      "drops": [
+        {
+          "item_id": "coins",
+          "quantity": 5
+        },
+        {
+          "item_id": "wooden_splinters",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "mob_id": "goblin_01",
+      "display_name": "Goblin",
+      "level": 2,
+      "hitpoints": 3,
+      "attack_seconds": 1.3,
+      "respawn_seconds": 12,
+      "attack_style": "melee",
+      "attack_range": 1,
+      "visual_kind": "goblin",
+      "position": [
+        19,
+        17
+      ],
+      "drops": [
+        {
+          "item_id": "coins",
+          "quantity": 7
+        },
+        {
+          "item_id": "rusty_scrap",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "mob_id": "skeleton_01",
+      "display_name": "Skeleton",
+      "level": 3,
+      "hitpoints": 5,
+      "attack_seconds": 1.5,
+      "respawn_seconds": 20,
+      "attack_style": "melee",
+      "attack_range": 1,
+      "visual_kind": "skeleton",
+      "position": [
+        20,
+        18
+      ],
+      "drops": [
+        {
+          "item_id": "coins",
+          "quantity": 10
+        },
+        {
+          "item_id": "bones",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "mob_id": "slime_01",
+      "display_name": "Slime",
+      "level": 4,
+      "hitpoints": 6,
+      "attack_seconds": 1.7,
+      "respawn_seconds": 16,
+      "attack_style": "melee",
+      "attack_range": 1,
+      "visual_kind": "slime",
+      "position": [
+        23,
+        20
+      ],
+      "drops": [
+        {
+          "item_id": "coins",
+          "quantity": 8
+        },
+        {
+          "item_id": "gel",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "mob_id": "wolf_01",
+      "display_name": "Wolf",
+      "level": 5,
+      "hitpoints": 7,
+      "attack_seconds": 1.2,
+      "respawn_seconds": 26,
+      "attack_style": "melee",
+      "attack_range": 1,
+      "visual_kind": "wolf",
+      "position": [
+        25,
+        20
+      ],
+      "drops": [
+        {
+          "item_id": "coins",
+          "quantity": 12
+        },
+        {
+          "item_id": "bones",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "mob_id": "bandit_01",
+      "display_name": "Bandit",
+      "level": 6,
+      "hitpoints": 8,
+      "attack_seconds": 1.4,
+      "respawn_seconds": 30,
+      "attack_style": "melee",
+      "attack_range": 1,
+      "visual_kind": "bandit",
+      "position": [
+        27,
+        22
+      ],
+      "drops": [
+        {
+          "item_id": "coins",
+          "quantity": 12
+        },
+        {
+          "item_id": "rusty_scrap",
+          "quantity": 1
+        },
+        {
+          "item_id": "cloth",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "mob_id": "mage_imp_01",
+      "display_name": "Mage imp",
+      "level": 7,
+      "hitpoints": 6,
+      "attack_seconds": 1.8,
+      "respawn_seconds": 34,
+      "attack_style": "magic",
+      "attack_range": 4,
+      "visual_kind": "mage_imp",
+      "position": [
+        29,
+        23
+      ],
+      "drops": [
+        {
+          "item_id": "coins",
+          "quantity": 14
+        },
+        {
+          "item_id": "glow_dust",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "mob_id": "archer_goblin_01",
+      "display_name": "Archer goblin",
+      "level": 8,
+      "hitpoints": 7,
+      "attack_seconds": 1.6,
+      "respawn_seconds": 36,
+      "attack_style": "ranged",
+      "attack_range": 4,
+      "visual_kind": "archer_goblin",
+      "position": [
+        31,
+        22
+      ],
+      "drops": [
+        {
+          "item_id": "coins",
+          "quantity": 16
+        },
+        {
+          "item_id": "wooden_splinters",
+          "quantity": 1
+        },
+        {
+          "item_id": "cloth",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "mob_id": "mire_bat_01",
+      "display_name": "Mire bat",
+      "level": 9,
+      "hitpoints": 8,
+      "attack_seconds": 1.4,
+      "respawn_seconds": 24,
+      "attack_style": "melee",
+      "attack_range": 1,
+      "poison_chance": 0.3,
+      "poison_damage": 1,
+      "poison_rounds": 3,
+      "visual_kind": "mire_bat",
+      "position": [
+        37,
+        23
+      ],
+      "drops": [
+        {
+          "item_id": "coins",
+          "quantity": 18
+        },
+        {
+          "item_id": "mire_goo",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "mob_id": "mire_bat_02",
+      "display_name": "Mire screecher",
+      "level": 12,
+      "hitpoints": 10,
+      "attack_seconds": 1.7,
+      "respawn_seconds": 30,
+      "attack_style": "melee",
+      "attack_range": 1,
+      "poison_chance": 0.4,
+      "poison_damage": 2,
+      "poison_rounds": 3,
+      "visual_kind": "mire_bat",
+      "position": [
+        41,
+        22
+      ],
+      "drops": [
+        {
+          "item_id": "coins",
+          "quantity": 24
+        },
+        {
+          "item_id": "mire_goo",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "mob_id": "fen_crawler_01",
+      "display_name": "Fen crawler",
+      "level": 13,
+      "hitpoints": 11,
+      "attack_seconds": 1.5,
+      "respawn_seconds": 28,
+      "attack_style": "melee",
+      "attack_range": 1,
+      "poison_chance": 0.35,
+      "poison_damage": 1,
+      "poison_rounds": 4,
+      "visual_kind": "fen_crawler",
+      "position": [
+        45,
+        23
+      ],
+      "drops": [
+        {
+          "item_id": "coins",
+          "quantity": 22
+        },
+        {
+          "item_id": "fen_gel",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "mob_id": "practice_dummy_01",
+      "display_name": "Practice dummy",
+      "level": 1,
+      "hitpoints": 2,
+      "attack_seconds": 1.0,
+      "respawn_seconds": 6,
+      "attack_style": "melee",
+      "attack_range": 1,
+      "visual_kind": "target_dummy",
+      "passive": true,
+      "position": [
+        16,
+        14
+      ],
+      "drops": []
+    }
+  ],
+  "furnace": {
+    "id": "furnace_01",
+    "name": "Furnace",
+    "tile": [
+      13,
+      13
+    ]
+  },
+  "anvil": {
+    "id": "anvil_01",
+    "name": "Anvil",
+    "tile": [
+      12,
+      15
+    ]
+  },
+  "carpentry_bench": {
+    "id": "carpentry_bench_01",
+    "name": "Carpentry bench",
+    "tile": [
+      14,
+      13
+    ]
+  },
+  "apothecary_table": {
+    "id": "apothecary_table_01",
+    "name": "Apothecary table",
+    "tile": [
+      20,
+      14
+    ]
+  },
+  "npcs": [
+    {
+      "id": "guide_01",
+      "name": "Village Guide",
+      "tile": [
+        16,
+        13
+      ],
+      "quest_id": "starter_path"
+    },
+    {
+      "id": "trail_warden_01",
+      "name": "Trail Warden",
+      "tile": [
+        17,
+        13
+      ],
+      "quest_id": "trail_supplies"
+    },
+    {
+      "id": "field_steward_01",
+      "name": "Field Steward",
+      "tile": [
+        18,
+        14
+      ],
+      "quest_id": "field_provisions"
+    },
+    {
+      "id": "gate_scout_01",
+      "name": "Gate Scout",
+      "tile": [
+        19,
+        14
+      ],
+      "quest_id": "road_watch"
+    },
+    {
+      "id": "forge_keeper_01",
+      "name": "Forge Keeper",
+      "tile": [
+        12,
+        14
+      ],
+      "quest_id": "forge_reserve"
+    },
+    {
+      "id": "workshop_keeper_01",
+      "name": "Workshop Keeper",
+      "tile": [
+        14,
+        12
+      ],
+      "quest_id": "workshop_order"
+    },
+    {
+      "id": "practice_mentor_01",
+      "name": "Practice Mentor",
+      "tile": [
+        15,
+        12
+      ],
+      "quest_id": "practice_gear"
+    },
+    {
+      "id": "moonweaver_01",
+      "name": "Meadow Herbalist",
+      "tile": [
+        21,
+        13
+      ],
+      "quest_id": "moon_remedy"
+    },
+    {
+      "id": "river_fisher_01",
+      "name": "River Fisher",
+      "tile": [
+        11,
+        18
+      ],
+      "quest_id": "first_cast"
+    },
+    {
+      "id": "dock_hand_01",
+      "name": "Dock Hand",
+      "tile": [
+        12,
+        18
+      ],
+      "quest_id": "river_stock"
+    },
+    {
+      "id": "kitchen_runner_01",
+      "name": "Kitchen Runner",
+      "tile": [
+        16,
+        16
+      ],
+      "quest_id": "field_meal"
+    },
+    {
+      "id": "carpentry_helper_01",
+      "name": "Carpentry Helper",
+      "tile": [
+        13,
+        12
+      ],
+      "quest_id": "workbench_tools"
+    },
+    {
+      "id": "road_guard_01",
+      "name": "Road Guard",
+      "tile": [
+        22,
+        16
+      ],
+      "quest_id": "road_patrol"
+    },
+    {
+      "id": "mire_scout_01",
+      "name": "Mire Scout",
+      "tile": [
+        34,
+        18
+      ],
+      "quest_id": "bog_reeds"
+    },
+    {
+      "id": "mire_brewer_01",
+      "name": "Mire Brewer",
+      "tile": [
+        36,
+        18
+      ],
+      "quest_id": "mire_tonic"
+    },
+    {
+      "id": "mire_guard_01",
+      "name": "Mire Guard",
+      "tile": [
+        39,
+        21
+      ],
+      "quest_id": "mire_watch"
+    },
+    {
+      "id": "fen_scout_01",
+      "name": "Fen Scout",
+      "tile": [
+        44,
+        18
+      ],
+      "quest_id": "fen_reeds"
+    },
+    {
+      "id": "fen_brewer_01",
+      "name": "Fen Brewer",
+      "tile": [
+        46,
+        18
+      ],
+      "quest_id": "fen_tonic"
+    },
+    {
+      "id": "fen_guard_01",
+      "name": "Fen Guard",
+      "tile": [
+        48,
+        21
+      ],
+      "quest_id": "fen_watch"
+    }
+  ]
+}

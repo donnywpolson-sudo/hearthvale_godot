@@ -1,0 +1,480 @@
+{
+  "smelting": [
+    {
+      "recipe_id": "bronze_bar",
+      "display_name": "Bronze bar",
+      "inputs": {"copper_ore": 1, "tin_ore": 1},
+      "output_item_id": "bronze_bar",
+      "output_quantity": 1,
+      "required_level": 1,
+      "xp_reward": 6,
+      "base_seconds": 1.8
+    },
+    {
+      "recipe_id": "iron_bar",
+      "display_name": "Iron bar",
+      "inputs": {"iron_ore": 1},
+      "output_item_id": "iron_bar",
+      "output_quantity": 1,
+      "required_level": 15,
+      "xp_reward": 13,
+      "base_seconds": 2.1
+    },
+    {
+      "recipe_id": "mithril_bar",
+      "display_name": "Mithril bar",
+      "inputs": {"mithril_ore": 1, "coal": 2},
+      "output_item_id": "mithril_bar",
+      "output_quantity": 1,
+      "required_level": 30,
+      "xp_reward": 30,
+      "base_seconds": 2.8
+    },
+    {
+      "recipe_id": "starsteel_bar",
+      "display_name": "Starsteel bar",
+      "inputs": {"starsteel_ore": 1, "coal": 4},
+      "output_item_id": "starsteel_bar",
+      "output_quantity": 1,
+      "required_level": 40,
+      "xp_reward": 50,
+      "base_seconds": 3.6
+    }
+  ],
+  "smithing": [
+    {
+      "recipe_id": "bronze_sword",
+      "display_name": "Bronze sword",
+      "inputs": {"bronze_bar": 1},
+      "output_item_id": "bronze_sword",
+      "output_quantity": 1,
+      "required_level": 1,
+      "xp_reward": 12,
+      "base_seconds": 2.0
+    },
+    {
+      "recipe_id": "bronze_shield",
+      "display_name": "Bronze shield",
+      "inputs": {"bronze_bar": 2},
+      "output_item_id": "bronze_shield",
+      "output_quantity": 1,
+      "required_level": 1,
+      "xp_reward": 24,
+      "base_seconds": 2.6
+    },
+    {
+      "recipe_id": "iron_sword",
+      "display_name": "Iron sword",
+      "inputs": {"iron_bar": 1},
+      "output_item_id": "iron_sword",
+      "output_quantity": 1,
+      "required_level": 15,
+      "xp_reward": 25,
+      "base_seconds": 2.4
+    },
+    {
+      "recipe_id": "iron_shield",
+      "display_name": "Iron shield",
+      "inputs": {"iron_bar": 2},
+      "output_item_id": "iron_shield",
+      "output_quantity": 1,
+      "required_level": 15,
+      "xp_reward": 50,
+      "base_seconds": 3.0
+    },
+    {
+      "recipe_id": "mithril_sword",
+      "display_name": "Mithril sword",
+      "inputs": {"mithril_bar": 1},
+      "output_item_id": "mithril_sword",
+      "output_quantity": 1,
+      "required_level": 30,
+      "xp_reward": 50,
+      "base_seconds": 3.0
+    },
+    {
+      "recipe_id": "mithril_shield",
+      "display_name": "Mithril shield",
+      "inputs": {"mithril_bar": 2},
+      "output_item_id": "mithril_shield",
+      "output_quantity": 1,
+      "required_level": 30,
+      "xp_reward": 100,
+      "base_seconds": 3.6
+    },
+    {
+      "recipe_id": "starsteel_sword",
+      "display_name": "Starsteel sword",
+      "inputs": {"starsteel_bar": 1},
+      "output_item_id": "starsteel_sword",
+      "output_quantity": 1,
+      "required_level": 40,
+      "xp_reward": 75,
+      "base_seconds": 3.8
+    },
+    {
+      "recipe_id": "lumen_sword",
+      "display_name": "Lumen sword",
+      "inputs": {"starsteel_bar": 1, "glow_dust": 1, "plain_tool_handle": 1},
+      "output_item_id": "lumen_sword",
+      "output_quantity": 1,
+      "required_level": 60,
+      "xp_reward": 110,
+      "base_seconds": 5.0
+    },
+    {
+      "recipe_id": "apex_sword",
+      "display_name": "Apex sword",
+      "inputs": {"lumen_sword": 1, "starsteel_bar": 1, "glow_dust": 1},
+      "output_item_id": "apex_sword",
+      "output_quantity": 1,
+      "required_level": 90,
+      "xp_reward": 240,
+      "base_seconds": 6.0
+    },
+    {
+      "recipe_id": "starsteel_shield",
+      "display_name": "Starsteel shield",
+      "inputs": {"starsteel_bar": 2},
+      "output_item_id": "starsteel_shield",
+      "output_quantity": 1,
+      "required_level": 40,
+      "xp_reward": 150,
+      "base_seconds": 4.5
+    },
+    {
+      "recipe_id": "reinforced_spike",
+      "display_name": "Reinforced spike",
+      "inputs": {"starsteel_bar": 1, "glow_dust": 1},
+      "output_item_id": "reinforced_spike",
+      "output_quantity": 1,
+      "required_level": 35,
+      "xp_reward": 90,
+      "base_seconds": 3.2
+    },
+    {
+      "recipe_id": "warding_spike",
+      "display_name": "Warding spike",
+      "inputs": {"reinforced_spike": 1, "starsteel_bar": 1, "glow_dust": 1},
+      "output_item_id": "warding_spike",
+      "output_quantity": 1,
+      "required_level": 70,
+      "xp_reward": 160,
+      "base_seconds": 4.0
+    }
+  ],
+  "carpentry": [
+    {
+      "recipe_id": "plain_plank",
+      "display_name": "Plain plank",
+      "inputs": {"logs": 1},
+      "output_item_id": "plain_plank",
+      "output_quantity": 1,
+      "required_level": 1,
+      "xp_reward": 8,
+      "base_seconds": 1.6
+    },
+    {
+      "recipe_id": "charcoal",
+      "display_name": "Charcoal",
+      "inputs": {"logs": 1},
+      "output_item_id": "charcoal",
+      "output_quantity": 1,
+      "required_level": 1,
+      "xp_reward": 6,
+      "base_seconds": 1.4
+    },
+    {
+      "recipe_id": "split_splinters",
+      "display_name": "Wooden splinters",
+      "inputs": {"logs": 1},
+      "output_item_id": "wooden_splinters",
+      "output_quantity": 2,
+      "required_level": 1,
+      "xp_reward": 4,
+      "base_seconds": 1.2
+    },
+    {
+      "recipe_id": "plain_tool_handle",
+      "display_name": "Plain tool handle",
+      "inputs": {"plain_plank": 1},
+      "output_item_id": "plain_tool_handle",
+      "output_quantity": 1,
+      "required_level": 1,
+      "xp_reward": 10,
+      "base_seconds": 1.8
+    },
+    {
+      "recipe_id": "storage_crate",
+      "display_name": "Storage crate",
+      "inputs": {"plain_plank": 2},
+      "output_item_id": "storage_crate",
+      "output_quantity": 1,
+      "required_level": 5,
+      "xp_reward": 18,
+      "base_seconds": 2.4
+    },
+    {
+      "recipe_id": "camp_kit",
+      "display_name": "Camp kit",
+      "inputs": {"plain_plank": 1, "cloth": 1, "wooden_splinters": 2},
+      "output_item_id": "camp_kit",
+      "output_quantity": 1,
+      "required_level": 5,
+      "xp_reward": 16,
+      "base_seconds": 2.0
+    },
+    {
+      "recipe_id": "wooden_shield",
+      "display_name": "Wooden shield",
+      "inputs": {"plain_plank": 2},
+      "output_item_id": "wooden_shield",
+      "output_quantity": 1,
+      "required_level": 3,
+      "xp_reward": 18,
+      "base_seconds": 2.2
+    },
+    {
+      "recipe_id": "training_bow",
+      "display_name": "Training bow",
+      "inputs": {"plain_plank": 2, "plain_tool_handle": 1},
+      "output_item_id": "training_bow",
+      "output_quantity": 1,
+      "required_level": 1,
+      "xp_reward": 24,
+      "base_seconds": 2.6
+    },
+    {
+      "recipe_id": "training_staff",
+      "display_name": "Training staff",
+      "inputs": {"plain_tool_handle": 1, "charcoal": 1},
+      "output_item_id": "training_staff",
+      "output_quantity": 1,
+      "required_level": 1,
+      "xp_reward": 22,
+      "base_seconds": 2.4
+    },
+    {
+      "recipe_id": "oak_plank",
+      "display_name": "Oak plank",
+      "inputs": {"oak_logs": 1},
+      "output_item_id": "oak_plank",
+      "output_quantity": 1,
+      "required_level": 15,
+      "xp_reward": 14,
+      "base_seconds": 1.8
+    },
+    {
+      "recipe_id": "oak_bow",
+      "display_name": "Oak bow",
+      "inputs": {"oak_plank": 2, "plain_tool_handle": 1},
+      "output_item_id": "oak_bow",
+      "output_quantity": 1,
+      "required_level": 15,
+      "xp_reward": 42,
+      "base_seconds": 3.0
+    },
+    {
+      "recipe_id": "oak_staff",
+      "display_name": "Oak staff",
+      "inputs": {"oak_plank": 1, "charcoal": 1},
+      "output_item_id": "oak_staff",
+      "output_quantity": 1,
+      "required_level": 15,
+      "xp_reward": 38,
+      "base_seconds": 2.8
+    },
+    {
+      "recipe_id": "bait_box",
+      "display_name": "Bait box",
+      "inputs": {"plain_plank": 1, "seed_bundle": 1, "wooden_splinters": 1},
+      "output_item_id": "bait_box",
+      "output_quantity": 1,
+      "required_level": 20,
+      "xp_reward": 28,
+      "base_seconds": 2.4
+    },
+    {
+      "recipe_id": "willow_bow",
+      "display_name": "Willow bow",
+      "inputs": {"willow_logs": 2, "plain_tool_handle": 1},
+      "output_item_id": "willow_bow",
+      "output_quantity": 1,
+      "required_level": 30,
+      "xp_reward": 70,
+      "base_seconds": 3.4
+    },
+    {
+      "recipe_id": "willow_staff",
+      "display_name": "Willow staff",
+      "inputs": {"willow_logs": 1, "glow_dust": 1},
+      "output_item_id": "willow_staff",
+      "output_quantity": 1,
+      "required_level": 30,
+      "xp_reward": 66,
+      "base_seconds": 3.2
+    },
+    {
+      "recipe_id": "maple_bow",
+      "display_name": "Maple bow",
+      "inputs": {"maple_logs": 2, "plain_tool_handle": 2},
+      "output_item_id": "maple_bow",
+      "output_quantity": 1,
+      "required_level": 45,
+      "xp_reward": 120,
+      "base_seconds": 4.2
+    },
+    {
+      "recipe_id": "field_pack",
+      "display_name": "Field pack",
+      "inputs": {"plain_plank": 2, "cloth": 1, "bloom_pollen": 1},
+      "output_item_id": "field_pack",
+      "output_quantity": 1,
+      "required_level": 45,
+      "xp_reward": 44,
+      "base_seconds": 3.6
+    },
+    {
+      "recipe_id": "lumen_bow",
+      "display_name": "Lumen bow",
+      "inputs": {"redwood_logs": 2, "plain_tool_handle": 2, "glow_dust": 1},
+      "output_item_id": "lumen_bow",
+      "output_quantity": 1,
+      "required_level": 60,
+      "xp_reward": 160,
+      "base_seconds": 5.2
+    },
+    {
+      "recipe_id": "apex_bow",
+      "display_name": "Apex bow",
+      "inputs": {"lumen_bow": 1, "redwood_logs": 2, "glow_dust": 1},
+      "output_item_id": "apex_bow",
+      "output_quantity": 1,
+      "required_level": 90,
+      "xp_reward": 260,
+      "base_seconds": 6.2
+    },
+    {
+      "recipe_id": "starsteel_staff",
+      "display_name": "Starsteel staff",
+      "inputs": {"starsteel_bar": 1, "plain_tool_handle": 1, "glow_dust": 1},
+      "output_item_id": "starsteel_staff",
+      "output_quantity": 1,
+      "required_level": 40,
+      "xp_reward": 130,
+      "base_seconds": 4.4
+    },
+    {
+      "recipe_id": "lumen_staff",
+      "display_name": "Lumen staff",
+      "inputs": {"starsteel_bar": 1, "plain_tool_handle": 1, "glow_dust": 2},
+      "output_item_id": "lumen_staff",
+      "output_quantity": 1,
+      "required_level": 60,
+      "xp_reward": 180,
+      "base_seconds": 5.4
+    },
+    {
+      "recipe_id": "apex_staff",
+      "display_name": "Apex staff",
+      "inputs": {"lumen_staff": 1, "starsteel_bar": 1, "glow_dust": 2},
+      "output_item_id": "apex_staff",
+      "output_quantity": 1,
+      "required_level": 90,
+      "xp_reward": 300,
+      "base_seconds": 6.4
+    }
+  ],
+  "herbalism": [
+    {
+      "recipe_id": "meadow_potion",
+      "display_name": "Meadow potion",
+      "inputs": {"moon_herb": 2, "gel": 1},
+      "output_item_id": "moon_potion",
+      "output_quantity": 1,
+      "required_level": 1,
+      "xp_reward": 22,
+      "base_seconds": 2.0
+    },
+    {
+      "recipe_id": "briar_tonic",
+      "display_name": "Briar tonic",
+      "inputs": {"briarleaf": 2, "gel": 1},
+      "output_item_id": "briar_tonic",
+      "output_quantity": 1,
+      "required_level": 15,
+      "xp_reward": 45,
+      "base_seconds": 2.5
+    },
+    {
+      "recipe_id": "mire_tonic",
+      "display_name": "Mire tonic",
+      "inputs": {"bog_reeds": 2, "seed_bundle": 1},
+      "output_item_id": "mire_tonic",
+      "output_quantity": 1,
+      "required_level": 20,
+      "xp_reward": 50,
+      "base_seconds": 2.6
+    },
+    {
+      "recipe_id": "fen_tonic",
+      "display_name": "Fen tonic",
+      "inputs": {"fen_reeds": 2, "gel": 1},
+      "output_item_id": "fen_tonic",
+      "output_quantity": 1,
+      "required_level": 32,
+      "xp_reward": 62,
+      "base_seconds": 2.9
+    },
+    {
+      "recipe_id": "amber_draught",
+      "display_name": "Amber draught",
+      "inputs": {"ambercap": 2, "gem_shard": 1},
+      "output_item_id": "amber_draught",
+      "output_quantity": 1,
+      "required_level": 35,
+      "xp_reward": 85,
+      "base_seconds": 3.1
+    },
+    {
+      "recipe_id": "sun_tonic",
+      "display_name": "Sun tonic",
+      "inputs": {"sunpetal": 2, "bloom_pollen": 1},
+      "output_item_id": "sun_tonic",
+      "output_quantity": 1,
+      "required_level": 50,
+      "xp_reward": 110,
+      "base_seconds": 3.4
+    },
+    {
+      "recipe_id": "heartroot_elixir",
+      "display_name": "Heartroot elixir",
+      "inputs": {"heartroot": 2, "gel": 1, "glow_dust": 1},
+      "output_item_id": "heartroot_elixir",
+      "output_quantity": 1,
+      "required_level": 60,
+      "xp_reward": 140,
+      "base_seconds": 3.8
+    },
+    {
+      "recipe_id": "lumen_elixir",
+      "display_name": "Lumen elixir",
+      "inputs": {"lumenbloom": 2, "heartroot": 1, "bloom_pollen": 1},
+      "output_item_id": "lumen_elixir",
+      "output_quantity": 1,
+      "required_level": 75,
+      "xp_reward": 190,
+      "base_seconds": 4.4
+    },
+    {
+      "recipe_id": "apex_feast",
+      "display_name": "Apex feast",
+      "inputs": {"raw_apexfish": 1, "glow_dust": 1},
+      "output_item_id": "cooked_apex_feast",
+      "output_quantity": 1,
+      "required_level": 90,
+      "xp_reward": 260,
+      "base_seconds": 5.0
+    }
+  ]
+}

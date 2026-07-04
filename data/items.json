@@ -1,0 +1,965 @@
+{
+  "coins": {
+    "name": "Coins",
+    "icon": "items/coins",
+    "category": "currency",
+    "stackable": true,
+    "sell_price": 0
+  },
+  "bronze_axe": {
+    "name": "Bronze axe",
+    "icon": "items/bronze_axe",
+    "category": "tool",
+    "stackable": false,
+    "buy_price": 20,
+    "sell_price": 8,
+    "tool_for": "woodcutting"
+  },
+  "bronze_pickaxe": {
+    "name": "Bronze pickaxe",
+    "icon": "items/bronze_pickaxe",
+    "category": "tool",
+    "stackable": false,
+    "buy_price": 20,
+    "sell_price": 8,
+    "tool_for": "mining"
+  },
+  "fishing_rod": {
+    "name": "Fishing rod",
+    "icon": "items/fishing_rod",
+    "category": "tool",
+    "stackable": false,
+    "buy_price": 18,
+    "sell_price": 6,
+    "tool_for": "fishing"
+  },
+  "small_fishing_net": {
+    "name": "Small fishing net",
+    "icon": "items/small_fishing_net",
+    "category": "tool",
+    "stackable": false,
+    "buy_price": 18,
+    "sell_price": 5,
+    "tool_for": "fishing"
+  },
+  "cooking_pot": {
+    "name": "Cooking pot",
+    "icon": "items/cooking_pot",
+    "category": "tool",
+    "stackable": false,
+    "buy_price": 15,
+    "sell_price": 4,
+    "tool_for": "cooking"
+  },
+  "bronze_sword": {
+    "name": "Bronze sword",
+    "icon": "items/bronze_sword",
+    "category": "weapon",
+    "stackable": false,
+    "buy_price": 35,
+    "sell_price": 12,
+    "attack_bonus": 1,
+    "strength_bonus": 1,
+    "equip_slot": "weapon",
+    "required_skills": {"attack": 1}
+  },
+  "training_bow": {
+    "name": "Training bow",
+    "icon": "items/training_bow",
+    "category": "weapon",
+    "stackable": false,
+    "buy_price": 32,
+    "sell_price": 18,
+    "ranged_bonus": 1,
+    "equip_slot": "weapon",
+    "required_skills": {"ranged": 1}
+  },
+  "training_staff": {
+    "name": "Training staff",
+    "icon": "items/training_staff",
+    "category": "weapon",
+    "stackable": false,
+    "buy_price": 32,
+    "sell_price": 14,
+    "magic_bonus": 1,
+    "equip_slot": "weapon",
+    "required_skills": {"magic": 1}
+  },
+  "oak_bow": {
+    "name": "Oak bow",
+    "icon": "items/bow",
+    "category": "weapon",
+    "stackable": false,
+    "sell_price": 28,
+    "ranged_bonus": 2,
+    "equip_slot": "weapon",
+    "required_skills": {"ranged": 15}
+  },
+  "willow_bow": {
+    "name": "Willow bow",
+    "icon": "items/bow",
+    "category": "weapon",
+    "stackable": false,
+    "sell_price": 55,
+    "ranged_bonus": 4,
+    "equip_slot": "weapon",
+    "required_skills": {"ranged": 30}
+  },
+  "maple_bow": {
+    "name": "Maple bow",
+    "icon": "items/bow",
+    "category": "weapon",
+    "stackable": false,
+    "sell_price": 95,
+    "ranged_bonus": 6,
+    "equip_slot": "weapon",
+    "required_skills": {"ranged": 40}
+  },
+  "lumen_bow": {
+    "name": "Lumen bow",
+    "icon": "items/bow",
+    "category": "weapon",
+    "stackable": false,
+    "sell_price": 190,
+    "ranged_bonus": 8,
+    "equip_slot": "weapon",
+    "required_skills": {"ranged": 60}
+  },
+  "apex_bow": {
+    "name": "Apex bow",
+    "icon": "items/bow",
+    "category": "weapon",
+    "stackable": false,
+    "sell_price": 280,
+    "ranged_bonus": 10,
+    "equip_slot": "weapon",
+    "required_skills": {"ranged": 90}
+  },
+  "oak_staff": {
+    "name": "Oak staff",
+    "icon": "items/staff",
+    "category": "weapon",
+    "stackable": false,
+    "sell_price": 26,
+    "magic_bonus": 2,
+    "equip_slot": "weapon",
+    "required_skills": {"magic": 15}
+  },
+  "willow_staff": {
+    "name": "Willow staff",
+    "icon": "items/staff",
+    "category": "weapon",
+    "stackable": false,
+    "sell_price": 52,
+    "magic_bonus": 4,
+    "equip_slot": "weapon",
+    "required_skills": {"magic": 30}
+  },
+  "starsteel_staff": {
+    "name": "Starsteel staff",
+    "icon": "items/staff",
+    "category": "weapon",
+    "stackable": false,
+    "sell_price": 210,
+    "magic_bonus": 6,
+    "equip_slot": "weapon",
+    "required_skills": {"magic": 40}
+  },
+  "lumen_staff": {
+    "name": "Lumen staff",
+    "icon": "items/staff",
+    "category": "weapon",
+    "stackable": false,
+    "sell_price": 360,
+    "magic_bonus": 8,
+    "equip_slot": "weapon",
+    "required_skills": {"magic": 60}
+  },
+  "apex_staff": {
+    "name": "Apex staff",
+    "icon": "items/staff",
+    "category": "weapon",
+    "stackable": false,
+    "sell_price": 420,
+    "magic_bonus": 10,
+    "equip_slot": "weapon",
+    "required_skills": {"magic": 90}
+  },
+  "iron_sword": {
+    "name": "Iron sword",
+    "icon": "items/iron_sword",
+    "category": "weapon",
+    "stackable": false,
+    "buy_price": 90,
+    "sell_price": 35,
+    "attack_bonus": 2,
+    "strength_bonus": 2,
+    "equip_slot": "weapon",
+    "required_skills": {"attack": 15}
+  },
+  "mithril_sword": {
+    "name": "Mithril sword",
+    "icon": "items/mithril_sword",
+    "category": "weapon",
+    "stackable": false,
+    "buy_price": 220,
+    "sell_price": 90,
+    "attack_bonus": 4,
+    "strength_bonus": 4,
+    "equip_slot": "weapon",
+    "required_skills": {"attack": 30}
+  },
+  "starsteel_sword": {
+    "name": "Starsteel sword",
+    "icon": "items/starsteel_sword",
+    "category": "weapon",
+    "stackable": false,
+    "buy_price": 520,
+    "sell_price": 220,
+    "attack_bonus": 6,
+    "strength_bonus": 6,
+    "equip_slot": "weapon",
+    "required_skills": {"attack": 40}
+  },
+  "lumen_sword": {
+    "name": "Lumen sword",
+    "icon": "items/starsteel_sword",
+    "category": "weapon",
+    "stackable": false,
+    "buy_price": 760,
+    "sell_price": 340,
+    "attack_bonus": 8,
+    "strength_bonus": 8,
+    "equip_slot": "weapon",
+    "required_skills": {"attack": 60}
+  },
+  "apex_sword": {
+    "name": "Apex sword",
+    "icon": "items/starsteel_sword",
+    "category": "weapon",
+    "stackable": false,
+    "buy_price": 1120,
+    "sell_price": 520,
+    "attack_bonus": 10,
+    "strength_bonus": 10,
+    "equip_slot": "weapon",
+    "required_skills": {"attack": 90}
+  },
+  "bronze_shield": {
+    "name": "Bronze shield",
+    "icon": "items/bronze_shield",
+    "category": "armor",
+    "stackable": false,
+    "buy_price": 30,
+    "sell_price": 20,
+    "defence_bonus": 1,
+    "equip_slot": "shield",
+    "required_skills": {"defence": 1}
+  },
+  "iron_shield": {
+    "name": "Iron shield",
+    "icon": "items/iron_shield",
+    "category": "armor",
+    "stackable": false,
+    "buy_price": 75,
+    "sell_price": 40,
+    "defence_bonus": 2,
+    "equip_slot": "shield",
+    "required_skills": {"defence": 15}
+  },
+  "mithril_shield": {
+    "name": "Mithril shield",
+    "icon": "items/mithril_shield",
+    "category": "armor",
+    "stackable": false,
+    "buy_price": 200,
+    "sell_price": 110,
+    "defence_bonus": 4,
+    "equip_slot": "shield",
+    "required_skills": {"defence": 30}
+  },
+  "starsteel_shield": {
+    "name": "Starsteel shield",
+    "icon": "items/starsteel_shield",
+    "category": "armor",
+    "stackable": false,
+    "buy_price": 480,
+    "sell_price": 280,
+    "defence_bonus": 6,
+    "equip_slot": "shield",
+    "required_skills": {"defence": 40}
+  },
+  "logs": {
+    "name": "Logs",
+    "icon": "items/logs",
+    "category": "wood",
+    "stackable": true,
+    "sell_price": 3
+  },
+  "plain_plank": {
+    "name": "Plain plank",
+    "icon": "items/plain_plank",
+    "category": "wood",
+    "stackable": true,
+    "sell_price": 5
+  },
+  "oak_logs": {
+    "name": "Oak logs",
+    "icon": "items/oak_logs",
+    "category": "wood",
+    "stackable": true,
+    "sell_price": 6
+  },
+  "oak_plank": {
+    "name": "Oak plank",
+    "icon": "items/oak_plank",
+    "category": "wood",
+    "stackable": true,
+    "sell_price": 9
+  },
+  "willow_logs": {
+    "name": "Willow logs",
+    "icon": "items/willow_logs",
+    "category": "wood",
+    "stackable": true,
+    "sell_price": 10
+  },
+  "maple_logs": {
+    "name": "Maple logs",
+    "icon": "items/maple_logs",
+    "category": "wood",
+    "stackable": true,
+    "sell_price": 16
+  },
+  "yew_logs": {
+    "name": "Yew logs",
+    "icon": "items/yew_logs",
+    "category": "wood",
+    "stackable": true,
+    "sell_price": 25
+  },
+  "magic_logs": {
+    "name": "Magic logs",
+    "icon": "items/magic_logs",
+    "category": "wood",
+    "stackable": true,
+    "sell_price": 60
+  },
+  "redwood_logs": {
+    "name": "Redwood logs",
+    "icon": "items/redwood_logs",
+    "category": "wood",
+    "stackable": true,
+    "sell_price": 120
+  },
+  "copper_ore": {
+    "name": "Copper ore",
+    "icon": "items/copper_ore",
+    "category": "ore",
+    "stackable": true,
+    "sell_price": 5
+  },
+  "tin_ore": {
+    "name": "Tin ore",
+    "icon": "items/tin_ore",
+    "category": "ore",
+    "stackable": true,
+    "sell_price": 5
+  },
+  "iron_ore": {
+    "name": "Iron ore",
+    "icon": "items/iron_ore",
+    "category": "ore",
+    "stackable": true,
+    "sell_price": 8
+  },
+  "coal": {
+    "name": "Coal",
+    "icon": "items/coal",
+    "category": "ore",
+    "stackable": true,
+    "sell_price": 12
+  },
+  "mithril_ore": {
+    "name": "Mithril ore",
+    "icon": "items/mithril_ore",
+    "category": "ore",
+    "stackable": true,
+    "sell_price": 20
+  },
+  "adamant_ore": {
+    "name": "Adamant ore",
+    "icon": "items/adamant_ore",
+    "category": "ore",
+    "stackable": true,
+    "sell_price": 32
+  },
+  "starsteel_ore": {
+    "name": "Starsteel ore",
+    "icon": "items/starsteel_ore",
+    "category": "ore",
+    "stackable": true,
+    "sell_price": 80
+  },
+  "bronze_bar": {
+    "name": "Bronze bar",
+    "icon": "items/bronze_bar",
+    "category": "bar",
+    "stackable": true,
+    "sell_price": 10
+  },
+  "iron_bar": {
+    "name": "Iron bar",
+    "icon": "items/iron_bar",
+    "category": "bar",
+    "stackable": true,
+    "sell_price": 20
+  },
+  "mithril_bar": {
+    "name": "Mithril bar",
+    "icon": "items/mithril_bar",
+    "category": "bar",
+    "stackable": true,
+    "sell_price": 55
+  },
+  "starsteel_bar": {
+    "name": "Starsteel bar",
+    "icon": "items/starsteel_bar",
+    "category": "bar",
+    "stackable": true,
+    "sell_price": 140
+  },
+  "raw_shrimp": {
+    "name": "Raw shrimp",
+    "icon": "items/raw_shrimp",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 2,
+    "cook_result": "cooked_shrimp",
+    "cooking_required_level": 1,
+    "cooking_xp": 30,
+    "base_cook_seconds": 1.8
+  },
+  "cooked_shrimp": {
+    "name": "Cooked shrimp",
+    "icon": "items/cooked_shrimp",
+    "category": "fish",
+    "stackable": true,
+    "heal_amount": 3,
+    "sell_price": 7
+  },
+  "trail_ration": {
+    "name": "Trail ration",
+    "icon": "items/trail_ration",
+    "category": "misc",
+    "stackable": true,
+    "buy_price": 3,
+    "sell_price": 2,
+    "heal_amount": 4
+  },
+  "raw_trout": {
+    "name": "Raw trout",
+    "icon": "items/raw_trout",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 7,
+    "cook_result": "cooked_trout",
+    "cooking_required_level": 15,
+    "cooking_xp": 70,
+    "base_cook_seconds": 2.0
+  },
+  "cooked_trout": {
+    "name": "Cooked trout",
+    "icon": "items/cooked_trout",
+    "category": "fish",
+    "stackable": true,
+    "heal_amount": 7,
+    "sell_price": 12
+  },
+  "raw_salmon": {
+    "name": "Raw salmon",
+    "icon": "items/raw_salmon",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 10,
+    "cook_result": "cooked_salmon",
+    "cooking_required_level": 25,
+    "cooking_xp": 90,
+    "base_cook_seconds": 2.3
+  },
+  "cooked_salmon": {
+    "name": "Cooked salmon",
+    "icon": "items/cooked_salmon",
+    "category": "fish",
+    "stackable": true,
+    "heal_amount": 9,
+    "sell_price": 17
+  },
+  "raw_lobster": {
+    "name": "Raw lobster",
+    "icon": "items/raw_lobster",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 16,
+    "cook_result": "cooked_lobster",
+    "cooking_required_level": 40,
+    "cooking_xp": 120,
+    "base_cook_seconds": 2.8
+  },
+  "cooked_lobster": {
+    "name": "Cooked lobster",
+    "icon": "items/cooked_lobster",
+    "category": "fish",
+    "stackable": true,
+    "heal_amount": 12,
+    "sell_price": 26
+  },
+  "raw_swordfish": {
+    "name": "Raw swordfish",
+    "icon": "items/raw_swordfish",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 24,
+    "cook_result": "cooked_swordfish",
+    "cooking_required_level": 45,
+    "cooking_xp": 140,
+    "base_cook_seconds": 3.0
+  },
+  "cooked_swordfish": {
+    "name": "Cooked swordfish",
+    "icon": "items/cooked_swordfish",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 36,
+    "effect_duration_seconds": 90,
+    "attack_bonus": 1,
+    "strength_bonus": 1
+  },
+  "raw_monkfish": {
+    "name": "Raw monkfish",
+    "icon": "items/raw_monkfish",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 38,
+    "cook_result": "cooked_monkfish",
+    "cooking_required_level": 62,
+    "cooking_xp": 150,
+    "base_cook_seconds": 3.4
+  },
+  "cooked_monkfish": {
+    "name": "Cooked monkfish",
+    "icon": "items/cooked_monkfish",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 55,
+    "effect_duration_seconds": 120,
+    "strength_bonus": 1,
+    "defence_bonus": 1
+  },
+  "raw_shark": {
+    "name": "Raw shark",
+    "icon": "items/raw_shark",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 65,
+    "cook_result": "cooked_shark",
+    "cooking_required_level": 80,
+    "cooking_xp": 210,
+    "base_cook_seconds": 3.8
+  },
+  "cooked_shark": {
+    "name": "Cooked shark",
+    "icon": "items/cooked_shark",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 95,
+    "effect_duration_seconds": 120,
+    "action_speed_bonus": 0.05
+  },
+  "raw_anglerfish": {
+    "name": "Raw anglerfish",
+    "icon": "items/raw_anglerfish",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 90,
+    "cook_result": "cooked_anglerfish",
+    "cooking_required_level": 84,
+    "cooking_xp": 230,
+    "base_cook_seconds": 4.0
+  },
+  "cooked_anglerfish": {
+    "name": "Cooked anglerfish",
+    "icon": "items/cooked_anglerfish",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 130,
+    "effect_duration_seconds": 150,
+    "action_speed_bonus": 0.08,
+    "cleanses_poison": true
+  },
+  "raw_apexfish": {
+    "name": "Raw apex fish",
+    "icon": "items/raw_apexfish",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 124,
+    "cook_result": "cooked_apex_feast",
+    "cooking_required_level": 90,
+    "cooking_xp": 280,
+    "base_cook_seconds": 4.6
+  },
+  "cooked_apex_feast": {
+    "name": "Apex feast",
+    "icon": "items/cooked_apex_feast",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 180,
+    "effect_duration_seconds": 180,
+    "action_speed_bonus": 0.1,
+    "cleanses_poison": true
+  },
+  "wooden_splinters": {
+    "name": "Wooden splinters",
+    "icon": "items/wooden_splinters",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 2
+  },
+  "plain_tool_handle": {
+    "name": "Plain tool handle",
+    "icon": "items/plain_tool_handle",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 8
+  },
+  "storage_crate": {
+    "name": "Storage crate",
+    "icon": "items/storage_crate",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 14
+  },
+  "wooden_shield": {
+    "name": "Wooden shield",
+    "icon": "items/wooden_shield",
+    "category": "armor",
+    "stackable": false,
+    "sell_price": 16,
+    "defence_bonus": 1,
+    "equip_slot": "shield",
+    "required_skills": {"defence": 1}
+  },
+  "charcoal": {
+    "name": "Charcoal",
+    "icon": "items/charcoal",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 6
+  },
+  "rusty_scrap": {
+    "name": "Rusty scrap",
+    "icon": "items/rusty_scrap",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 2
+  },
+  "glow_dust": {
+    "name": "Glow dust",
+    "icon": "items/glow_dust",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 3
+  },
+  "bones": {
+    "name": "Bones",
+    "icon": "items/bones",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 2
+  },
+  "cloth": {
+    "name": "Cloth",
+    "icon": "items/cloth",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 3
+  },
+  "gel": {
+    "name": "Gel",
+    "icon": "items/gel",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 4
+  },
+  "mire_goo": {
+    "name": "Mire goo",
+    "icon": "items/gel",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 10
+  },
+  "fen_gel": {
+    "name": "Fen gel",
+    "icon": "items/gel",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 12
+  },
+  "moon_herb": {
+    "name": "Meadow herb",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 5
+  },
+  "bog_reeds": {
+    "name": "Bog reeds",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 7
+  },
+  "fen_reeds": {
+    "name": "Fen reeds",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 8
+  },
+  "briarleaf": {
+    "name": "Briarleaf",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 9
+  },
+  "ambercap": {
+    "name": "Ambercap",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 16
+  },
+  "heartroot": {
+    "name": "Heartroot",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 28
+  },
+  "lumenbloom": {
+    "name": "Lumen bloom",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 42
+  },
+  "wild_berries": {
+    "name": "Wild berries",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 4,
+    "heal_amount": 3
+  },
+  "shadecaps": {
+    "name": "Shadecaps",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 8,
+    "heal_amount": 5
+  },
+  "duskcaps": {
+    "name": "Duskcaps",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 14,
+    "heal_amount": 8
+  },
+  "sunberries": {
+    "name": "Sunberries",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 18,
+    "heal_amount": 10
+  },
+  "nightberries": {
+    "name": "Nightberries",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 30,
+    "heal_amount": 14
+  },
+  "mooncaps": {
+    "name": "Mooncaps",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 24,
+    "heal_amount": 12
+  },
+  "moon_potion": {
+    "name": "Meadow potion",
+    "icon": "items/potion",
+    "category": "misc",
+    "stackable": true,
+    "buy_price": 30,
+    "sell_price": 14,
+    "heal_amount": 14
+  },
+  "briar_tonic": {
+    "name": "Briar tonic",
+    "icon": "items/potion",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 24,
+    "heal_amount": 18
+  },
+  "mire_tonic": {
+    "name": "Mire tonic",
+    "icon": "items/potion",
+    "category": "misc",
+    "stackable": true,
+    "buy_price": 38,
+    "sell_price": 30,
+    "effect_duration_seconds": 90,
+    "action_speed_bonus": 0.05,
+    "cleanses_poison": true
+  },
+  "fen_tonic": {
+    "name": "Fen tonic",
+    "icon": "items/potion",
+    "category": "misc",
+    "stackable": true,
+    "buy_price": 34,
+    "sell_price": 26,
+    "effect_duration_seconds": 90,
+    "defence_bonus": 1,
+    "action_speed_bonus": 0.03
+  },
+  "amber_draught": {
+    "name": "Amber draught",
+    "icon": "items/potion",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 52,
+    "effect_duration_seconds": 90,
+    "attack_bonus": 1,
+    "strength_bonus": 1
+  },
+  "sun_tonic": {
+    "name": "Sun tonic",
+    "icon": "items/potion",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 60,
+    "effect_duration_seconds": 120,
+    "defence_bonus": 1
+  },
+  "heartroot_elixir": {
+    "name": "Heartroot elixir",
+    "icon": "items/potion",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 78,
+    "heal_amount": 32
+  },
+  "lumen_elixir": {
+    "name": "Lumen elixir",
+    "icon": "items/potion",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 128,
+    "effect_duration_seconds": 150,
+    "action_speed_bonus": 0.08,
+    "cleanses_poison": true
+  },
+  "moon_gem": {
+    "name": "Meadow gem",
+    "icon": "items/gem",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 48
+  },
+  "sunpetal": {
+    "name": "Sunpetal",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 20
+  },
+  "sap_glob": {
+    "name": "Sap glob",
+    "icon": "items/logs",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 6
+  },
+  "gem_shard": {
+    "name": "Gem shard",
+    "icon": "items/gem",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 16
+  },
+  "tide_roe": {
+    "name": "Tide roe",
+    "icon": "items/raw_shrimp",
+    "category": "fish",
+    "stackable": true,
+    "sell_price": 8
+  },
+  "seed_bundle": {
+    "name": "Seed bundle",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 9
+  },
+  "bloom_pollen": {
+    "name": "Bloom pollen",
+    "icon": "items/herb",
+    "category": "misc",
+    "stackable": true,
+    "sell_price": 12
+  },
+  "reinforced_spike": {
+    "name": "Reinforced spike",
+    "icon": "items/bronze_bar",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 20
+  },
+  "warding_spike": {
+    "name": "Warding spike",
+    "icon": "items/starsteel_bar",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 34
+  },
+  "camp_kit": {
+    "name": "Camp kit",
+    "icon": "items/storage_crate",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 18
+  },
+  "bait_box": {
+    "name": "Bait box",
+    "icon": "items/fishing_rod",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 14
+  },
+  "field_pack": {
+    "name": "Field pack",
+    "icon": "items/storage_crate",
+    "category": "misc",
+    "stackable": false,
+    "sell_price": 24
+  }
+}

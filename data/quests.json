@@ -1,0 +1,442 @@
+{
+  "quests": [
+    {
+      "quest_id": "starter_path",
+      "display_name": "Starter path",
+      "start_text": "Guide: Cook food, smelt a bar, smith and equip a weapon, defeat an enemy, use the bank and shop, then return.",
+      "in_progress_text": "Guide: Keep going. Still needed: {missing_objectives}.",
+      "completed_text": "Guide: The village is safer because of you.",
+      "completion_text": "Quest complete: Starter path. Reward: 50 coins, +40 Smithing XP.",
+      "not_started_objective": "Talk to the Village Guide.",
+      "return_objective": "Return to the Village Guide.",
+      "completed_objective": "Starter path complete.",
+      "progress_format": "Starter path {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "cooked_food", "label": "Cook food"},
+        {"flag": "smelted_bar", "label": "Smelt a bar"},
+        {"flag": "smithed_gear", "label": "Smith gear"},
+        {"flag": "equipped_weapon", "label": "Equip a weapon"},
+        {"flag": "ate_food", "label": "Eat food"},
+        {"flag": "defeated_enemy", "label": "Defeat an enemy"},
+        {"flag": "used_bank", "label": "Use the bank"},
+        {"flag": "used_shop", "label": "Use the shop"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 50}
+      ],
+      "skill_rewards": [
+        {"skill_id": "smithing", "xp": 40}
+      ]
+    },
+    {
+      "quest_id": "trail_supplies",
+      "display_name": "Trail supplies",
+      "start_text": "Warden: Chop wood, craft and equip a bow, clear one wolf, bank the spoils, buy a trail ration, then return.",
+      "in_progress_text": "Warden: The trail still needs {missing_objectives}.",
+      "completed_text": "Warden: The trail supply loop holds now.",
+      "completion_text": "Quest complete: Trail supplies. Reward: 35 coins, +20 Carpentry XP.",
+      "not_started_objective": "Talk to the Trail Warden.",
+      "return_objective": "Return to the Trail Warden.",
+      "completed_objective": "Trail supplies complete.",
+      "progress_format": "Trail supplies {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "gathered_wood", "label": "Gather wood"},
+        {"flag": "crafted_training_bow", "label": "Craft a Training bow"},
+        {"flag": "equipped_training_bow", "label": "Equip a Training bow"},
+        {"flag": "defeated_wolf", "label": "Defeat a wolf"},
+        {"flag": "used_bank", "label": "Use the bank"},
+        {"flag": "used_shop", "label": "Use the shop"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 35}
+      ],
+      "skill_rewards": [
+        {"skill_id": "carpentry", "xp": 20}
+      ]
+    },
+    {
+      "quest_id": "field_provisions",
+      "display_name": "Field provisions",
+      "start_text": "Steward: Cook the catch, bank the meal, and keep the field crew fed for the shift.",
+      "in_progress_text": "Steward: The stores are not ready yet. Still needed: {missing_objectives}.",
+      "completed_text": "Steward: The crew can work through the morning now.",
+      "completion_text": "Quest complete: Field provisions. Reward: 25 coins, +20 Cooking XP.",
+      "not_started_objective": "Talk to the Field Steward.",
+      "return_objective": "Return to the Field Steward.",
+      "completed_objective": "Field provisions complete.",
+      "progress_format": "Field provisions {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "cooked_food", "label": "Cook food"},
+        {"flag": "used_bank", "label": "Use the bank"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 25}
+      ],
+      "skill_rewards": [
+        {"skill_id": "cooking", "xp": 20}
+      ]
+    },
+    {
+      "quest_id": "road_watch",
+      "display_name": "Road watch",
+      "start_text": "Scout: Buy a cheap supply, equip it, bank the spare coin, and clear one road threat before you report back.",
+      "in_progress_text": "Scout: The watch is not done yet. Still needed: {missing_objectives}.",
+      "completed_text": "Scout: The road holds steady for now.",
+      "completion_text": "Quest complete: Road watch. Reward: 30 coins, +20 Attack XP.",
+      "not_started_objective": "Talk to the Gate Scout.",
+      "return_objective": "Return to the Gate Scout.",
+      "completed_objective": "Road watch complete.",
+      "progress_format": "Road watch {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "used_shop", "label": "Visit the shop"},
+        {"flag": "equipped_weapon", "label": "Equip a weapon"},
+        {"flag": "used_bank", "label": "Use the bank"},
+        {"flag": "defeated_enemy", "label": "Defeat an enemy"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 30}
+      ],
+      "skill_rewards": [
+        {"skill_id": "attack", "xp": 20}
+      ]
+    },
+    {
+      "quest_id": "forge_reserve",
+      "display_name": "Forge reserve",
+      "start_text": "Forge Keeper: Smelt a bar, smith gear, equip it, clear one threat, and bank the patrol pay before the next shift.",
+      "in_progress_text": "Forge Keeper: The reserve is still short. Still needed: {missing_objectives}.",
+      "completed_text": "Forge Keeper: The reserve rack can hold through another shift now.",
+      "completion_text": "Quest complete: Forge reserve. Reward: 45 coins, +30 Smithing XP, +20 Attack XP.",
+      "not_started_objective": "Talk to the Forge Keeper.",
+      "return_objective": "Return to the Forge Keeper.",
+      "completed_objective": "Forge reserve complete.",
+      "progress_format": "Forge reserve {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "smelted_bar", "label": "Smelt a bar"},
+        {"flag": "smithed_gear", "label": "Smith gear"},
+        {"flag": "equipped_weapon", "label": "Equip a weapon"},
+        {"flag": "defeated_enemy", "label": "Defeat an enemy"},
+        {"flag": "used_bank", "label": "Use the bank"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 45}
+      ],
+      "skill_rewards": [
+        {"skill_id": "smithing", "xp": 30},
+        {"skill_id": "attack", "xp": 20}
+      ]
+    },
+    {
+      "quest_id": "workshop_order",
+      "display_name": "Workshop order",
+      "start_text": "Workshop Keeper: Turn logs into a plank, charcoal, and clean splinters so the village stock stays useful.",
+      "in_progress_text": "Workshop Keeper: The order is not filled yet. Still needed: {missing_objectives}.",
+      "completed_text": "Workshop Keeper: The workbench has what it needs now.",
+      "completion_text": "Quest complete: Workshop order. Reward: 24 coins, +24 Carpentry XP.",
+      "not_started_objective": "Talk to the Workshop Keeper.",
+      "return_objective": "Return to the Workshop Keeper.",
+      "completed_objective": "Workshop order complete.",
+      "progress_format": "Workshop order {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "crafted_plank", "label": "Craft a plank"},
+        {"flag": "crafted_charcoal", "label": "Make charcoal"},
+        {"flag": "crafted_splinters", "label": "Split wooden splinters"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 24}
+      ],
+      "skill_rewards": [
+        {"skill_id": "carpentry", "xp": 24}
+      ]
+    },
+    {
+      "quest_id": "practice_gear",
+      "display_name": "Practice gear",
+      "start_text": "Practice Mentor: Craft a bow and staff from village wood so the yard can train every style.",
+      "in_progress_text": "Practice Mentor: The practice rack is still short. Still needed: {missing_objectives}.",
+      "completed_text": "Practice Mentor: The practice rack is ready for new drills.",
+      "completion_text": "Quest complete: Practice gear. Reward: 35 coins, +30 Carpentry XP.",
+      "not_started_objective": "Talk to the Practice Mentor.",
+      "return_objective": "Return to the Practice Mentor.",
+      "completed_objective": "Practice gear complete.",
+      "progress_format": "Practice gear {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "crafted_training_bow", "label": "Craft a Training bow"},
+        {"flag": "crafted_training_staff", "label": "Craft a Training staff"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 35}
+      ],
+      "skill_rewards": [
+        {"skill_id": "carpentry", "xp": 30}
+      ]
+    },
+    {
+      "quest_id": "moon_remedy",
+      "display_name": "Meadow remedy",
+      "start_text": "Meadow Herbalist: Gather one herb, bank it, and I will trade you a tonic and a gem.",
+      "in_progress_text": "Meadow Herbalist: Keep the herb banked and return when it is stored. Still needed: {missing_objectives}.",
+      "completed_text": "Meadow Herbalist: The tonic holds. The gem is yours.",
+      "completion_text": "Quest complete: Meadow remedy. Reward: 1 Meadow potion, 1 Meadow gem, +30 Herbalism XP.",
+      "not_started_objective": "Talk to the Meadow Herbalist.",
+      "return_objective": "Return to the Meadow Herbalist.",
+      "completed_objective": "Meadow remedy complete.",
+      "progress_format": "Meadow remedy {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "gathered_herb", "label": "Gather a meadow herb"},
+        {"flag": "used_bank", "label": "Use the bank"}
+      ],
+      "item_rewards": [
+        {"item_id": "moon_potion", "quantity": 1},
+        {"item_id": "moon_gem", "quantity": 1}
+      ],
+      "skill_rewards": [
+        {"skill_id": "herbalism", "xp": 30}
+      ]
+    },
+    {
+      "quest_id": "first_cast",
+      "display_name": "First cast",
+      "start_text": "River Fisher: Catch any fish and bring it back.",
+      "in_progress_text": "River Fisher: Still needed: {missing_objectives}.",
+      "completed_text": "River Fisher: Good catch. The line looks steady now.",
+      "completion_text": "Quest complete: First cast. Reward: 25 coins, +15 Fishing XP.",
+      "not_started_objective": "Talk to the River Fisher.",
+      "return_objective": "Return to the River Fisher.",
+      "completed_objective": "First cast complete.",
+      "progress_format": "First cast {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "caught_fish", "label": "Catch a fish"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 25}
+      ],
+      "skill_rewards": [
+        {"skill_id": "fishing", "xp": 15}
+      ]
+    },
+    {
+      "quest_id": "river_stock",
+      "display_name": "River stock",
+      "start_text": "Dock Hand: Catch one fish, bank it, and keep the dock stocked for the next haul.",
+      "in_progress_text": "Dock Hand: Keep the catch moving. Still needed: {missing_objectives}.",
+      "completed_text": "Dock Hand: Good. The dock stays stocked when the catch is packed.",
+      "completion_text": "Quest complete: River stock. Reward: 15 coins, +10 Fishing XP.",
+      "not_started_objective": "Talk to the Dock Hand.",
+      "return_objective": "Return to the Dock Hand.",
+      "completed_objective": "River stock complete.",
+      "progress_format": "River stock {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "caught_fish", "label": "Catch a fish"},
+        {"flag": "used_bank", "label": "Use the bank"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 15}
+      ],
+      "skill_rewards": [
+        {"skill_id": "fishing", "xp": 10}
+      ]
+    },
+    {
+      "quest_id": "field_meal",
+      "display_name": "Field meal",
+      "start_text": "Kitchen Runner: Cook the catch, bank the meal, and keep the pantry moving.",
+      "in_progress_text": "Kitchen Runner: The meal is not ready yet. Still needed: {missing_objectives}.",
+      "completed_text": "Kitchen Runner: Good. A packed meal is easier to hand out.",
+      "completion_text": "Quest complete: Field meal. Reward: 18 coins, +12 Cooking XP.",
+      "not_started_objective": "Talk to the Kitchen Runner.",
+      "return_objective": "Return to the Kitchen Runner.",
+      "completed_objective": "Field meal complete.",
+      "progress_format": "Field meal {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "cooked_food", "label": "Cook food"},
+        {"flag": "used_bank", "label": "Use the bank"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 18}
+      ],
+      "skill_rewards": [
+        {"skill_id": "cooking", "xp": 12}
+      ]
+    },
+    {
+      "quest_id": "workbench_tools",
+      "display_name": "Workbench tools",
+      "start_text": "Carpentry Helper: Turn logs into a plank, a handle, and a bow. That is how the bench pays off.",
+      "in_progress_text": "Carpentry Helper: The bench still has work left. Still needed: {missing_objectives}.",
+      "completed_text": "Carpentry Helper: Good. Now the bench has a proper starter kit.",
+      "completion_text": "Quest complete: Workbench tools. Reward: 20 coins, +18 Carpentry XP.",
+      "not_started_objective": "Talk to the Carpentry Helper.",
+      "return_objective": "Return to the Carpentry Helper.",
+      "completed_objective": "Workbench tools complete.",
+      "progress_format": "Workbench tools {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "crafted_plank", "label": "Craft a plank"},
+        {"flag": "crafted_tool_handle", "label": "Craft a tool handle"},
+        {"flag": "crafted_training_bow", "label": "Craft a Training bow"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 20}
+      ],
+      "skill_rewards": [
+        {"skill_id": "carpentry", "xp": 18}
+      ]
+    },
+    {
+      "quest_id": "road_patrol",
+      "display_name": "Road patrol",
+      "start_text": "Road Guard: Buy a cheap supply, equip it, clear one threat, bank the spoils, and keep the road clear.",
+      "in_progress_text": "Road Guard: The patrol is not done yet. Still needed: {missing_objectives}.",
+      "completed_text": "Road Guard: Good. The road loop is working now.",
+      "completion_text": "Quest complete: Road patrol. Reward: 24 coins, +20 Attack XP.",
+      "not_started_objective": "Talk to the Road Guard.",
+      "return_objective": "Return to the Road Guard.",
+      "completed_objective": "Road patrol complete.",
+      "progress_format": "Road patrol {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "used_shop", "label": "Use the shop"},
+        {"flag": "equipped_weapon", "label": "Equip a weapon"},
+        {"flag": "defeated_enemy", "label": "Defeat an enemy"},
+        {"flag": "used_bank", "label": "Use the bank"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 24}
+      ],
+      "skill_rewards": [
+        {"skill_id": "attack", "xp": 20}
+      ]
+    },
+    {
+      "quest_id": "bog_reeds",
+      "display_name": "Bog reeds",
+      "start_text": "Scout: Gather bog reeds, bank them, and keep the marsh stock moving.",
+      "in_progress_text": "Scout: The marsh still needs {missing_objectives}.",
+      "completed_text": "Scout: The reed stack is ready for the next run.",
+      "completion_text": "Quest complete: Bog reeds. Reward: 30 coins, +20 Foraging XP.",
+      "not_started_objective": "Talk to the Mire Scout.",
+      "return_objective": "Return to the Mire Scout.",
+      "completed_objective": "Bog reeds complete.",
+      "progress_format": "Bog reeds {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "gathered_bog_reeds", "label": "Gather bog reeds"},
+        {"flag": "used_bank", "label": "Use the bank"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 30}
+      ],
+      "skill_rewards": [
+        {"skill_id": "foraging", "xp": 20}
+      ]
+    },
+    {
+      "quest_id": "mire_tonic",
+      "display_name": "Mire tonic",
+      "start_text": "Brewer: Weave the reeds into a tonic, then buy one from the shop.",
+      "in_progress_text": "Brewer: The tonic still needs {missing_objectives}.",
+      "completed_text": "Brewer: The tonic works. The shop can keep the supply steady.",
+      "completion_text": "Quest complete: Mire tonic. Reward: 35 coins, +25 Herbalism XP.",
+      "not_started_objective": "Talk to the Mire Brewer.",
+      "return_objective": "Return to the Mire Brewer.",
+      "completed_objective": "Mire tonic complete.",
+      "progress_format": "Mire tonic {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "crafted_mire_tonic", "label": "Craft a mire tonic"},
+        {"flag": "used_shop", "label": "Use the shop"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 35}
+      ],
+      "skill_rewards": [
+        {"skill_id": "herbalism", "xp": 25}
+      ]
+    },
+    {
+      "quest_id": "mire_watch",
+      "display_name": "Mire watch",
+      "start_text": "Guard: Bring down one mire bat, bank the spoils, and report back.",
+      "in_progress_text": "Guard: The marsh still needs {missing_objectives}.",
+      "completed_text": "Guard: Good. The bats are not crowding the path now.",
+      "completion_text": "Quest complete: Mire watch. Reward: 40 coins, +24 Attack XP.",
+      "not_started_objective": "Talk to the Mire Guard.",
+      "return_objective": "Return to the Mire Guard.",
+      "completed_objective": "Mire watch complete.",
+      "progress_format": "Mire watch {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "defeated_mire_bat", "label": "Defeat a mire bat"},
+        {"flag": "used_bank", "label": "Use the bank"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 40}
+      ],
+      "skill_rewards": [
+        {"skill_id": "attack", "xp": 24}
+      ]
+    },
+    {
+      "quest_id": "fen_reeds",
+      "display_name": "Fen reeds",
+      "start_text": "Scout: Gather fen reeds, bank them, and keep the reed bundles ready.",
+      "in_progress_text": "Scout: The reed stack is still short. Still needed: {missing_objectives}.",
+      "completed_text": "Scout: Good. The fen baskets are ready for the next pull.",
+      "completion_text": "Quest complete: Fen reeds. Reward: 32 coins, +18 Foraging XP.",
+      "not_started_objective": "Talk to the Fen Scout.",
+      "return_objective": "Return to the Fen Scout.",
+      "completed_objective": "Fen reeds complete.",
+      "progress_format": "Fen reeds {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "gathered_fen_reeds", "label": "Gather fen reeds"},
+        {"flag": "used_bank", "label": "Use the bank"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 32}
+      ],
+      "skill_rewards": [
+        {"skill_id": "foraging", "xp": 18}
+      ]
+    },
+    {
+      "quest_id": "fen_tonic",
+      "display_name": "Fen tonic",
+      "start_text": "Brewer: Brew a fen tonic, then buy one from the shop.",
+      "in_progress_text": "Brewer: The tonic still needs {missing_objectives}.",
+      "completed_text": "Brewer: Good. The shop can keep the fen stock moving.",
+      "completion_text": "Quest complete: Fen tonic. Reward: 38 coins, +22 Herbalism XP.",
+      "not_started_objective": "Talk to the Fen Brewer.",
+      "return_objective": "Return to the Fen Brewer.",
+      "completed_objective": "Fen tonic complete.",
+      "progress_format": "Fen tonic {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "crafted_fen_tonic", "label": "Brew a fen tonic"},
+        {"flag": "used_shop", "label": "Use the shop"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 38}
+      ],
+      "skill_rewards": [
+        {"skill_id": "herbalism", "xp": 22}
+      ]
+    },
+    {
+      "quest_id": "fen_watch",
+      "display_name": "Fen watch",
+      "start_text": "Guard: Bring down one fen crawler, bank the spoils, and report back.",
+      "in_progress_text": "Guard: The fen still needs {missing_objectives}.",
+      "completed_text": "Guard: Good. The crawler line has been pushed back.",
+      "completion_text": "Quest complete: Fen watch. Reward: 42 coins, +24 Attack XP.",
+      "not_started_objective": "Talk to the Fen Guard.",
+      "return_objective": "Return to the Fen Guard.",
+      "completed_objective": "Fen watch complete.",
+      "progress_format": "Fen watch {completed}/{total}: {objective}.",
+      "objectives": [
+        {"flag": "defeated_fen_crawler", "label": "Defeat a fen crawler"},
+        {"flag": "used_bank", "label": "Use the bank"}
+      ],
+      "item_rewards": [
+        {"item_id": "coins", "quantity": 42}
+      ],
+      "skill_rewards": [
+        {"skill_id": "attack", "xp": 24}
+      ]
+    }
+  ]
+}

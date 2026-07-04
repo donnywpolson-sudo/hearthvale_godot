@@ -1,0 +1,381 @@
+{
+  "version": 1,
+  "icon_size": [
+    64,
+    64
+  ],
+  "defaults": {
+    "icon": {
+      "path": "icons/ui/missing.png",
+      "description": "Fallback icon returned when a requested icon is absent."
+    },
+    "effect": {
+      "path": "sprites/effects/missing.png",
+      "description": "Fallback effect sprite returned when a requested effect is absent."
+    }
+  },
+  "items": {
+    "sword": {
+      "path": "icons/items/sword.png"
+    },
+    "shield": {
+      "path": "icons/items/shield.png"
+    },
+    "bow": {
+      "path": "icons/items/bow.png"
+    },
+    "staff": {
+      "path": "icons/items/staff.png"
+    },
+    "ore": {
+      "path": "icons/items/ore.png"
+    },
+    "ingot": {
+      "path": "icons/items/ingot.png"
+    },
+    "fish": {
+      "path": "icons/items/fish.png"
+    },
+    "cooked_fish": {
+      "path": "icons/items/cooked_fish.png"
+    },
+    "trail_ration": {
+      "path": "icons/items/trail_ration.png"
+    },
+    "log": {
+      "path": "icons/items/log.png"
+    },
+    "plank": {
+      "path": "icons/items/plank.png"
+    },
+    "herb": {
+      "path": "icons/items/herb.png"
+    },
+    "potion": {
+      "path": "icons/items/potion.png"
+    },
+    "coin": {
+      "path": "icons/items/coin.png"
+    },
+    "bone": {
+      "path": "icons/items/bone.png"
+    },
+    "cloth": {
+      "path": "icons/items/cloth.png"
+    },
+    "gem": {
+      "path": "icons/items/gem.png"
+    },
+    "coins": {
+      "path": "icons/items/coins.png"
+    },
+    "bronze_axe": {
+      "path": "icons/items/bronze_axe.png"
+    },
+    "bronze_pickaxe": {
+      "path": "icons/items/bronze_pickaxe.png"
+    },
+    "fishing_rod": {
+      "path": "icons/items/fishing_rod.png"
+    },
+    "small_fishing_net": {
+      "path": "icons/items/small_fishing_net.png"
+    },
+    "cooking_pot": {
+      "path": "icons/items/cooking_pot.png"
+    },
+    "bronze_sword": {
+      "path": "icons/items/bronze_sword.png"
+    },
+    "training_bow": {
+      "path": "icons/items/training_bow.png"
+    },
+    "training_staff": {
+      "path": "icons/items/training_staff.png"
+    },
+    "iron_sword": {
+      "path": "icons/items/iron_sword.png"
+    },
+    "mithril_sword": {
+      "path": "icons/items/mithril_sword.png"
+    },
+    "starsteel_sword": {
+      "path": "icons/items/starsteel_sword.png"
+    },
+    "bronze_shield": {
+      "path": "icons/items/bronze_shield.png"
+    },
+    "iron_shield": {
+      "path": "icons/items/iron_shield.png"
+    },
+    "mithril_shield": {
+      "path": "icons/items/mithril_shield.png"
+    },
+    "starsteel_shield": {
+      "path": "icons/items/starsteel_shield.png"
+    },
+    "logs": {
+      "path": "icons/items/logs.png"
+    },
+    "plain_plank": {
+      "path": "icons/items/plain_plank.png"
+    },
+    "oak_logs": {
+      "path": "icons/items/oak_logs.png"
+    },
+    "oak_plank": {
+      "path": "icons/items/oak_plank.png"
+    },
+    "willow_logs": {
+      "path": "icons/items/willow_logs.png"
+    },
+    "maple_logs": {
+      "path": "icons/items/maple_logs.png"
+    },
+    "yew_logs": {
+      "path": "icons/items/yew_logs.png"
+    },
+    "magic_logs": {
+      "path": "icons/items/magic_logs.png"
+    },
+    "redwood_logs": {
+      "path": "icons/items/redwood_logs.png"
+    },
+    "copper_ore": {
+      "path": "icons/items/copper_ore.png"
+    },
+    "tin_ore": {
+      "path": "icons/items/tin_ore.png"
+    },
+    "iron_ore": {
+      "path": "icons/items/iron_ore.png"
+    },
+    "coal": {
+      "path": "icons/items/coal.png"
+    },
+    "mithril_ore": {
+      "path": "icons/items/mithril_ore.png"
+    },
+    "adamant_ore": {
+      "path": "icons/items/adamant_ore.png"
+    },
+    "starsteel_ore": {
+      "path": "icons/items/starsteel_ore.png"
+    },
+    "bronze_bar": {
+      "path": "icons/items/bronze_bar.png"
+    },
+    "iron_bar": {
+      "path": "icons/items/iron_bar.png"
+    },
+    "mithril_bar": {
+      "path": "icons/items/mithril_bar.png"
+    },
+    "starsteel_bar": {
+      "path": "icons/items/starsteel_bar.png"
+    },
+    "raw_shrimp": {
+      "path": "icons/items/raw_shrimp.png"
+    },
+    "cooked_shrimp": {
+      "path": "icons/items/cooked_shrimp.png"
+    },
+    "raw_trout": {
+      "path": "icons/items/raw_trout.png"
+    },
+    "cooked_trout": {
+      "path": "icons/items/cooked_trout.png"
+    },
+    "raw_salmon": {
+      "path": "icons/items/raw_salmon.png"
+    },
+    "cooked_salmon": {
+      "path": "icons/items/cooked_salmon.png"
+    },
+    "raw_lobster": {
+      "path": "icons/items/raw_lobster.png"
+    },
+    "cooked_lobster": {
+      "path": "icons/items/cooked_lobster.png"
+    },
+    "raw_swordfish": {
+      "path": "icons/items/raw_swordfish.png"
+    },
+    "cooked_swordfish": {
+      "path": "icons/items/cooked_swordfish.png"
+    },
+    "raw_monkfish": {
+      "path": "icons/items/raw_monkfish.png"
+    },
+    "cooked_monkfish": {
+      "path": "icons/items/cooked_monkfish.png"
+    },
+    "raw_shark": {
+      "path": "icons/items/raw_shark.png"
+    },
+    "cooked_shark": {
+      "path": "icons/items/cooked_shark.png"
+    },
+    "raw_anglerfish": {
+      "path": "icons/items/raw_anglerfish.png"
+    },
+    "cooked_anglerfish": {
+      "path": "icons/items/cooked_anglerfish.png"
+    },
+    "raw_apexfish": {
+      "path": "icons/items/raw_apexfish.png"
+    },
+    "cooked_apex_feast": {
+      "path": "icons/items/cooked_apex_feast.png"
+    },
+    "wooden_splinters": {
+      "path": "icons/items/wooden_splinters.png"
+    },
+    "plain_tool_handle": {
+      "path": "icons/items/plain_tool_handle.png"
+    },
+    "storage_crate": {
+      "path": "icons/items/storage_crate.png"
+    },
+    "wooden_shield": {
+      "path": "icons/items/wooden_shield.png"
+    },
+    "charcoal": {
+      "path": "icons/items/charcoal.png"
+    },
+    "rusty_scrap": {
+      "path": "icons/items/rusty_scrap.png"
+    },
+    "glow_dust": {
+      "path": "icons/items/glow_dust.png"
+    },
+    "bones": {
+      "path": "icons/items/bones.png"
+    },
+    "gel": {
+      "path": "icons/items/gel.png"
+    }
+  },
+  "skills": {
+    "combat": {
+      "path": "icons/skills/combat.png"
+    },
+    "ranged": {
+      "path": "icons/skills/ranged.png"
+    },
+    "magic": {
+      "path": "icons/skills/magic.png"
+    },
+    "defence": {
+      "path": "icons/skills/defence.png"
+    },
+    "strength": {
+      "path": "icons/skills/strength.png"
+    },
+    "woodcutting": {
+      "path": "icons/skills/woodcutting.png"
+    },
+    "mining": {
+      "path": "icons/skills/mining.png"
+    },
+    "fishing": {
+      "path": "icons/skills/fishing.png"
+    },
+    "cooking": {
+      "path": "icons/skills/cooking.png"
+    },
+    "smithing": {
+      "path": "icons/skills/smithing.png"
+    },
+    "carpentry": {
+      "path": "icons/skills/carpentry.png"
+    },
+    "foraging": {
+      "path": "icons/skills/foraging.png"
+    },
+    "herbalism": {
+      "path": "icons/skills/herbalism.png"
+    },
+    "gathering": {
+      "path": "icons/skills/gathering.png"
+    }
+  },
+  "ui": {
+    "inventory": {
+      "path": "icons/ui/inventory.png"
+    },
+    "equipment": {
+      "path": "icons/ui/equipment.png"
+    },
+    "quest": {
+      "path": "icons/ui/quest.png"
+    },
+    "shop": {
+      "path": "icons/ui/shop.png"
+    },
+    "bank": {
+      "path": "icons/ui/bank.png"
+    },
+    "settings": {
+      "path": "icons/ui/settings.png"
+    },
+    "health": {
+      "path": "icons/ui/health.png"
+    },
+    "energy": {
+      "path": "icons/ui/energy.png"
+    },
+    "gold": {
+      "path": "icons/ui/gold.png"
+    }
+  },
+  "effects": {
+    "spark": {
+      "path": "sprites/effects/spark.png"
+    },
+    "slash": {
+      "path": "sprites/effects/slash.png"
+    },
+    "impact": {
+      "path": "sprites/effects/impact.png"
+    },
+    "heal": {
+      "path": "sprites/effects/heal.png"
+    },
+    "magic_burst": {
+      "path": "sprites/effects/magic_burst.png"
+    },
+    "respawn_glow": {
+      "path": "sprites/effects/respawn_glow.png"
+    }
+  },
+  "audio": {
+    "ambient": {
+      "path": "audio/ambient.wav"
+    },
+    "coin_jingle": {
+      "path": "audio/coin_jingle.wav"
+    },
+    "combat_hit": {
+      "path": "audio/combat_hit.wav"
+    },
+    "combat_miss": {
+      "path": "audio/combat_miss.wav"
+    },
+    "craft_shimmer": {
+      "path": "audio/craft_shimmer.wav"
+    },
+    "gather_thud": {
+      "path": "audio/gather_thud.wav"
+    },
+    "level_up": {
+      "path": "audio/level_up.wav"
+    },
+    "quest_complete": {
+      "path": "audio/quest_complete.wav"
+    },
+    "ui_click": {
+      "path": "audio/ui_click.wav"
+    }
+  }
+}
