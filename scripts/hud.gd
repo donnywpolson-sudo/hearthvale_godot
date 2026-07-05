@@ -5,12 +5,22 @@ signal bank_withdraw_requested(item_id: String, quantity: int)
 signal shop_buy_requested(item_id: String, price: int)
 signal shop_sell_requested(item_id: String, quantity: int)
 signal dialogue_action_requested(npc_data: Dictionary)
+signal inventory_item_action_requested(item_id: String, action: String)
+signal equipment_item_action_requested(slot: String, action: String)
+signal compass_reset_requested
 
 const ITEMS_PATH := "res://data/items.json"
 const SKILLS_PATH := "res://data/skills.json"
 const QUESTS_PATH := "res://data/quests.json"
+const FALLBACK_ICON_PATH := "res://assets/icons/ui/missing.png"
+const ItemTooltipButton := preload("res://scripts/item_tooltip_button.gd")
+const MinimapControl := preload("res://scripts/minimap_control.gd")
 const INVENTORY_SLOT_LIMIT := 28
 const EQUIPMENT_SLOTS := ["head", "cape", "amulet", "ammo", "weapon", "body", "shield", "legs", "hands", "feet", "ring"]
+const EQUIPMENT_BONUS_KEYS := ["attack_bonus", "strength_bonus", "defence_bonus", "ranged_bonus", "magic_bonus"]
+const USABLE_BONUS_KEYS := ["attack_bonus", "strength_bonus", "defence_bonus", "ranged_bonus", "magic_bonus", "action_speed_bonus"]
+const EQUIPMENT_PANEL_SIZE := Vector2(252, 278)
+const EQUIPMENT_SLOT_SIZE := Vector2(46, 46)
 const CATEGORY_ORDER := {
 	"currency": 0,
 	"tool": 1,
@@ -22,6 +32,33 @@ const CATEGORY_ORDER := {
 	"fish": 7,
 	"misc": 8,
 }
+const CATEGORY_COLORS := {
+	"currency": Color(0.98, 0.82, 0.34, 1.0),
+	"tool": Color(0.84, 0.58, 0.28, 1.0),
+	"weapon": Color(0.92, 0.46, 0.32, 1.0),
+	"armor": Color(0.52, 0.66, 0.84, 1.0),
+	"wood": Color(0.70, 0.50, 0.26, 1.0),
+	"ore": Color(0.70, 0.70, 0.66, 1.0),
+	"bar": Color(0.90, 0.68, 0.34, 1.0),
+	"fish": Color(0.48, 0.72, 0.90, 1.0),
+	"misc": Color(0.88, 0.80, 0.64, 1.0),
+}
+const SKILL_DISPLAY_ORDER := [
+	"attack",
+	"strength",
+	"defence",
+	"hitpoints",
+	"ranged",
+	"magic",
+	"woodcutting",
+	"mining",
+	"fishing",
+	"foraging",
+	"cooking",
+	"smithing",
+	"carpentry",
+	"herbalism",
+]
 
 @onready var account_label: Label = $Root/TopBar/Margin/Row/Account
 @onready var tile_label: Label = $Root/TopBar/Margin/Row/Tile
@@ -36,12 +73,18 @@ var current_state := {}
 var active_tab := "inventory"
 var chat_messages: Array[String] = []
 var tab_buttons: Dictionary = {}
+var item_icon_cache: Dictionary = {}
 var panel: PanelContainer
 var panel_title: Label
 var panel_body: VBoxContainer
 var interaction_panel: PanelContainer
 var interaction_title: Label
 var interaction_body: VBoxContainer
+var hover_hint_panel: PanelContainer
+var hover_hint_label: Label
+var minimap_panel: PanelContainer
+var minimap_view: Control
+var compass_button: Button
 var active_shop_data := {}
 var active_dialogue_npc := {}
 
@@ -52,6 +95,8 @@ func _ready() -> void:
 	quests_data = _load_json(QUESTS_PATH)
 	_build_state_panel()
 	_build_interaction_panel()
+	_build_hover_hint()
+	_build_minimap()
 
 
 func set_account(username: String) -> void:
@@ -62,8 +107,31 @@ func set_player_tile(tile: Vector2i) -> void:
 	tile_label.text = "Tile: %d, %d" % [tile.x, tile.y]
 
 
+func configure_minimap(data: Dictionary) -> void:
+	if minimap_view != null and minimap_view.has_method("configure"):
+		minimap_view.call("configure", data)
+
+
+func set_minimap_player_tile(tile: Vector2i) -> void:
+	if minimap_view != null and minimap_view.has_method("set_player_tile"):
+		minimap_view.call("set_player_tile", tile)
+
+
+func set_minimap_heading(heading_degrees: float) -> void:
+	if minimap_view != null and minimap_view.has_method("set_heading"):
+		minimap_view.call("set_heading", heading_degrees)
+
+
 func set_selection(label: String) -> void:
 	selection_label.text = "Selected: %s" % label
+
+
+func set_hover_target(label: String) -> void:
+	if hover_hint_panel == null or hover_hint_label == null:
+		return
+	var clean_label := label.strip_edges()
+	hover_hint_label.text = clean_label
+	hover_hint_panel.visible = not clean_label.is_empty()
 
 
 func set_feedback(message: String) -> void:
@@ -102,6 +170,49 @@ func run_ui_state_smoke() -> bool:
 		select_tab(tab_id)
 		if panel_body.get_child_count() == 0:
 			return false
+	select_tab("skills")
+	var skill_ids := _panel_skill_ids_for_smoke()
+	var magic_index := skill_ids.find("magic")
+	var woodcutting_index := skill_ids.find("woodcutting")
+	if skill_ids.is_empty() or skill_ids[0] != "attack" or magic_index == -1 or woodcutting_index == -1 or magic_index > woodcutting_index:
+		return false
+	if not _panel_contains_skill_icon("attack") or not _panel_contains_skill_icon("hitpoints"):
+		return false
+	select_tab("quests")
+	if not _panel_contains_button("Starter path") or not _panel_contains_button("Trail supplies"):
+		return false
+	if _item_icon_texture("logs") == null:
+		return false
+	if not _item_tooltip("logs", 3).contains("Category: wood"):
+		return false
+	show_item_action_panel("logs")
+	if interaction_title.text != "Logs" or interaction_body.get_child_count() == 0 or not _interaction_contains_button("Drop 1"):
+		return false
+	hide_interaction_panel()
+	set_hover_target("Tree (Woodcutting)")
+	if not hover_hint_is_visible() or hover_hint_text() != "Tree (Woodcutting)":
+		return false
+	set_hover_target("")
+	if hover_hint_is_visible():
+		return false
+	configure_minimap({"width": 100, "height": 100, "dirt_tiles": [[15, 15]], "water_tiles": [], "blocked_tiles": [], "objects": [{"tile": [16, 15], "type": "resource", "label": "Tree"}]})
+	set_minimap_player_tile(Vector2i(15, 15))
+	set_minimap_heading(42.0)
+	if not minimap_has_data_for_smoke() or minimap_player_tile_for_smoke() != Vector2i(15, 15) or absf(minimap_heading_for_smoke() - 42.0) > 0.1 or not minimap_player_is_centered_for_smoke():
+		return false
+	var snapshot := current_state.duplicate(true)
+	current_state["equipment"] = {"weapon": "bronze_sword"}
+	select_tab("equipment")
+	var bronze_sword_name := _item_name("bronze_sword")
+	var equipment_panel_ok := panel_title.text == "Equipment" and _panel_contains_button(bronze_sword_name)
+	show_equipment_action_panel("weapon")
+	var equipment_action_ok := interaction_title.text == "Weapon: %s" % bronze_sword_name and _interaction_contains_button("Unequip") and _item_tooltip("bronze_sword").contains("Attack +1")
+	current_state.clear()
+	for key in snapshot.keys():
+		current_state[key] = snapshot[key]
+	if not equipment_panel_ok or not equipment_action_ok:
+		return false
+	hide_interaction_panel()
 	select_tab("inventory")
 	return account_label.text.contains(str(current_state.get("username", ""))) and panel_title.text == "Inventory"
 
@@ -125,15 +236,15 @@ func run_interaction_panel_smoke() -> bool:
 func _build_state_panel() -> void:
 	panel = PanelContainer.new()
 	panel.name = "StatePanel"
-	panel.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+	panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	panel.anchor_left = 1.0
 	panel.anchor_right = 1.0
-	panel.anchor_top = 0.0
+	panel.anchor_top = 1.0
 	panel.anchor_bottom = 1.0
 	panel.offset_left = -292.0
-	panel.offset_top = 58.0
+	panel.offset_top = -560.0
 	panel.offset_right = -10.0
-	panel.offset_bottom = -190.0
+	panel.offset_bottom = -16.0
 	root_control.add_child(panel)
 
 	var margin := MarginContainer.new()
@@ -145,6 +256,8 @@ func _build_state_panel() -> void:
 
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation", 8)
+	stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stack.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_child(stack)
 
 	panel_title = Label.new()
@@ -159,16 +272,18 @@ func _build_state_panel() -> void:
 	_add_tab_button(tabs, "equipment", "Gear")
 	_add_tab_button(tabs, "skills", "Skills")
 	_add_tab_button(tabs, "quests", "Quest")
-	_add_tab_button(tabs, "state", "State")
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(246, 320)
+	scroll.custom_minimum_size = Vector2(246, 0)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	stack.add_child(scroll)
 
 	panel_body = VBoxContainer.new()
 	panel_body.add_theme_constant_override("separation", 6)
 	panel_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.add_child(panel_body)
 
 	select_tab(active_tab)
@@ -225,9 +340,122 @@ func _build_interaction_panel() -> void:
 	scroll.add_child(interaction_body)
 
 
+func _build_hover_hint() -> void:
+	hover_hint_panel = PanelContainer.new()
+	hover_hint_panel.name = "HoverHint"
+	hover_hint_panel.visible = false
+	hover_hint_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hover_hint_panel.anchor_left = 0.5
+	hover_hint_panel.anchor_right = 0.5
+	hover_hint_panel.anchor_top = 0.0
+	hover_hint_panel.anchor_bottom = 0.0
+	hover_hint_panel.offset_left = -150.0
+	hover_hint_panel.offset_top = 50.0
+	hover_hint_panel.offset_right = 150.0
+	hover_hint_panel.offset_bottom = 84.0
+	root_control.add_child(hover_hint_panel)
+
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 6)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 6)
+	hover_hint_panel.add_child(margin)
+
+	hover_hint_label = Label.new()
+	hover_hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hover_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hover_hint_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hover_hint_label.text = ""
+	margin.add_child(hover_hint_label)
+
+
+func _build_minimap() -> void:
+	minimap_panel = PanelContainer.new()
+	minimap_panel.name = "Minimap"
+	minimap_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	minimap_panel.anchor_left = 1.0
+	minimap_panel.anchor_right = 1.0
+	minimap_panel.anchor_top = 0.0
+	minimap_panel.anchor_bottom = 0.0
+	minimap_panel.offset_left = -166.0
+	minimap_panel.offset_top = 58.0
+	minimap_panel.offset_right = -10.0
+	minimap_panel.offset_bottom = 230.0
+	minimap_panel.add_theme_stylebox_override("panel", _flat_style(Color(0.08, 0.09, 0.08, 0.92), Color(0.34, 0.30, 0.20, 1.0), 1, 8))
+	root_control.add_child(minimap_panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	minimap_panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 5)
+	margin.add_child(stack)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 6)
+	stack.add_child(header)
+
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(spacer)
+
+	compass_button = Button.new()
+	compass_button.text = "N"
+	compass_button.tooltip_text = "Reset camera north"
+	compass_button.custom_minimum_size = Vector2(32, 26)
+	compass_button.pressed.connect(func() -> void: compass_reset_requested.emit())
+	header.add_child(compass_button)
+
+	minimap_view = MinimapControl.new()
+	minimap_view.custom_minimum_size = Vector2(136, 124)
+	minimap_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stack.add_child(minimap_view)
+
+
 func hide_interaction_panel() -> void:
 	if interaction_panel != null:
 		interaction_panel.visible = false
+
+
+func hover_hint_is_visible() -> bool:
+	return hover_hint_panel != null and hover_hint_panel.visible
+
+
+func hover_hint_text() -> String:
+	return hover_hint_label.text if hover_hint_label != null else ""
+
+
+func minimap_has_data_for_smoke() -> bool:
+	return minimap_view != null and minimap_view.has_method("has_minimap_data") and bool(minimap_view.call("has_minimap_data"))
+
+
+func minimap_player_tile_for_smoke() -> Vector2i:
+	if minimap_view != null and minimap_view.has_method("player_tile_for_smoke"):
+		return minimap_view.call("player_tile_for_smoke")
+	return Vector2i(-1, -1)
+
+
+func minimap_heading_for_smoke() -> float:
+	if minimap_view != null and minimap_view.has_method("heading_for_smoke"):
+		return float(minimap_view.call("heading_for_smoke"))
+	return -1.0
+
+
+func minimap_player_is_centered_for_smoke() -> bool:
+	if minimap_view == null or not minimap_view.has_method("player_screen_position_for_smoke"):
+		return false
+	var player_position: Vector2 = minimap_view.call("player_screen_position_for_smoke")
+	return player_position.distance_to(minimap_view.size * 0.5) <= 0.001
+
+
+func emit_compass_reset_for_smoke() -> void:
+	compass_reset_requested.emit()
 
 
 func interaction_panel_is_visible() -> bool:
@@ -267,7 +495,7 @@ func show_shop_panel(shop_data: Dictionary) -> void:
 	_clear_interaction_body()
 	interaction_title.text = str(shop_data.get("name", "Shop"))
 	interaction_panel.visible = true
-	_add_interaction_row("Coins: %d" % int(_stack_mapping(current_state.get("inventory", {})).get("coins", 0)))
+	_new_item_interaction_row("coins", "%d carried" % int(_stack_mapping(current_state.get("inventory", {})).get("coins", 0)))
 	var stock = shop_data.get("stock", [])
 	_add_interaction_section("Buy")
 	if not (stock is Array) or stock.is_empty():
@@ -308,6 +536,51 @@ func show_dialogue_panel(npc_data: Dictionary, definition: Dictionary, quest_sta
 		interaction_body.add_child(action_button)
 
 
+func show_item_action_panel(item_id: String) -> void:
+	if item_id.is_empty():
+		return
+	var inventory := _stack_mapping(current_state.get("inventory", {}))
+	if int(inventory.get(item_id, 0)) <= 0:
+		set_feedback("No %s" % _item_name(item_id))
+		return
+	var definition = items_data.get(item_id, {})
+	_clear_interaction_body()
+	interaction_title.text = _item_name(item_id)
+	interaction_panel.visible = true
+	_new_item_interaction_row(item_id, _display_label(_item_category(item_id)))
+	_add_interaction_row(_item_tooltip(item_id, int(inventory[item_id])))
+	var added_action := false
+	if definition is Dictionary and _definition_is_usable(definition):
+		_add_inventory_action_button("Use", item_id, "use")
+		added_action = true
+	if definition is Dictionary and _definition_is_equipment(definition):
+		_add_inventory_action_button("Equip", item_id, "equip")
+		added_action = true
+	_add_inventory_action_button("Examine", item_id, "examine")
+	added_action = true
+	_add_inventory_action_button("Drop 1", item_id, "drop")
+	added_action = true
+	if not added_action:
+		_add_interaction_muted("No actions available")
+
+
+func show_equipment_action_panel(slot: String) -> void:
+	if slot.is_empty():
+		return
+	var equipment := _string_mapping(current_state.get("equipment", {}))
+	var item_id := str(equipment.get(slot, ""))
+	if item_id.is_empty():
+		set_feedback("No item equipped in %s" % _display_label(slot))
+		return
+	_clear_interaction_body()
+	interaction_title.text = "%s: %s" % [_display_label(slot), _item_name(item_id)]
+	interaction_panel.visible = true
+	_new_item_interaction_row(item_id, _display_label(_item_category(item_id)))
+	_add_interaction_row(_item_tooltip(item_id))
+	_add_equipment_action_button("Unequip", slot, "unequip")
+	_add_equipment_action_button("Examine", slot, "examine")
+
+
 func _clear_interaction_body() -> void:
 	if interaction_body == null:
 		return
@@ -316,7 +589,7 @@ func _clear_interaction_body() -> void:
 
 
 func _add_bank_inventory_row(item_id: String, quantity: int) -> void:
-	var row := _new_interaction_row("%s x%d" % [_item_name(item_id), quantity])
+	var row := _new_item_interaction_row(item_id, "x%d" % quantity)
 	var one := Button.new()
 	one.text = "Deposit 1"
 	one.pressed.connect(func() -> void: bank_deposit_requested.emit(item_id, 1))
@@ -328,7 +601,7 @@ func _add_bank_inventory_row(item_id: String, quantity: int) -> void:
 
 
 func _add_bank_storage_row(item_id: String, quantity: int) -> void:
-	var row := _new_interaction_row("%s x%d" % [_item_name(item_id), quantity])
+	var row := _new_item_interaction_row(item_id, "x%d stored" % quantity)
 	var one := Button.new()
 	one.text = "Withdraw 1"
 	one.pressed.connect(func() -> void: bank_withdraw_requested.emit(item_id, 1))
@@ -342,7 +615,7 @@ func _add_bank_storage_row(item_id: String, quantity: int) -> void:
 func _add_shop_stock_row(item_id: String, price: int) -> void:
 	if item_id.is_empty() or price <= 0:
 		return
-	var row := _new_interaction_row("%s  %d coins" % [_item_name(item_id), price])
+	var row := _new_item_interaction_row(item_id, "%d coins" % price)
 	var button := Button.new()
 	button.text = "Buy"
 	button.pressed.connect(func() -> void: shop_buy_requested.emit(item_id, price))
@@ -350,7 +623,7 @@ func _add_shop_stock_row(item_id: String, price: int) -> void:
 
 
 func _add_shop_inventory_row(item_id: String, quantity: int, price: int) -> void:
-	var row := _new_interaction_row("%s x%d  %d ea" % [_item_name(item_id), quantity, price])
+	var row := _new_item_interaction_row(item_id, "x%d  %d ea" % [quantity, price])
 	var one := Button.new()
 	one.text = "Sell 1"
 	one.pressed.connect(func() -> void: shop_sell_requested.emit(item_id, 1))
@@ -359,6 +632,52 @@ func _add_shop_inventory_row(item_id: String, quantity: int, price: int) -> void
 	all.text = "All"
 	all.pressed.connect(func() -> void: shop_sell_requested.emit(item_id, 0))
 	row.add_child(all)
+
+
+func _add_inventory_action_button(label: String, item_id: String, action: String) -> void:
+	var button := Button.new()
+	button.text = label
+	button.pressed.connect(func() -> void: inventory_item_action_requested.emit(item_id, action))
+	interaction_body.add_child(button)
+
+
+func _add_equipment_action_button(label: String, slot: String, action: String) -> void:
+	var button := Button.new()
+	button.text = label
+	button.pressed.connect(func() -> void: equipment_item_action_requested.emit(slot, action))
+	interaction_body.add_child(button)
+
+
+func _new_item_interaction_row(item_id: String, detail_text: String = "") -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	interaction_body.add_child(row)
+
+	var stripe := ColorRect.new()
+	stripe.color = _item_color(item_id)
+	stripe.custom_minimum_size = Vector2(4, 30)
+	row.add_child(stripe)
+
+	var icon := _new_item_icon(item_id, Vector2(28, 28))
+	row.add_child(icon)
+
+	var text_stack := VBoxContainer.new()
+	text_stack.add_theme_constant_override("separation", 0)
+	text_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(text_stack)
+
+	var name_label := Label.new()
+	name_label.text = _item_name(item_id)
+	name_label.modulate = _item_color(item_id)
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text_stack.add_child(name_label)
+
+	if not detail_text.is_empty():
+		var detail_label := Label.new()
+		detail_label.text = detail_text
+		detail_label.modulate = Color(0.72, 0.72, 0.72, 1.0)
+		text_stack.add_child(detail_label)
+	return row
 
 
 func _new_interaction_row(text: String) -> HBoxContainer:
@@ -445,7 +764,6 @@ func _refresh_top_bar_from_state() -> void:
 func _render_inventory_panel() -> void:
 	var inventory := _stack_mapping(current_state.get("inventory", {}))
 	var bank := _stack_mapping(current_state.get("bank", {}))
-	_add_section_label("Inventory slots: %d / %d" % [_inventory_slot_count(inventory), INVENTORY_SLOT_LIMIT])
 	var grid := GridContainer.new()
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 4)
@@ -453,13 +771,18 @@ func _render_inventory_panel() -> void:
 	panel_body.add_child(grid)
 	var views := _inventory_slot_views(inventory)
 	for index in range(INVENTORY_SLOT_LIMIT):
-		var button := Button.new()
-		button.custom_minimum_size = Vector2(58, 38)
+		var button := ItemTooltipButton.new()
+		button.custom_minimum_size = Vector2(58, 52)
+		button.clip_contents = true
 		if index < views.size():
 			var view: Dictionary = views[index]
-			button.text = _slot_button_text(view)
-			button.tooltip_text = _item_name(str(view["item_id"]))
-			button.pressed.connect(func(item_id := str(view["item_id"])) -> void: set_feedback("Selected item: %s" % _item_name(item_id)))
+			var item_id := str(view["item_id"])
+			var quantity := int(view["quantity"])
+			button.text = ""
+			_apply_item_tooltip(button, item_id, quantity)
+			button.set_meta("item_name", _item_name(item_id))
+			button.pressed.connect(func(selected_item_id := item_id) -> void: show_item_action_panel(selected_item_id))
+			_add_inventory_button_content(button, view)
 		else:
 			button.text = ""
 			button.disabled = true
@@ -470,16 +793,337 @@ func _render_inventory_panel() -> void:
 		_add_muted_label("Bank is empty")
 	else:
 		for item_id in _sorted_item_ids(bank):
-			_add_row("%s x%d" % [_item_name(item_id), int(bank[item_id])])
+			_add_panel_item_row(item_id, "x%d stored" % int(bank[item_id]))
+
+
+func _add_inventory_button_content(button: Button, view: Dictionary) -> void:
+	var item_id := str(view["item_id"])
+	var quantity := int(view["quantity"])
+
+	var center := CenterContainer.new()
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.offset_left = 4.0
+	center.offset_top = 4.0
+	center.offset_right = -4.0
+	center.offset_bottom = -5.0
+	button.add_child(center)
+
+	var icon := _new_item_icon(item_id, Vector2(36, 36))
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	center.add_child(icon)
+
+	var color_strip := ColorRect.new()
+	color_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var strip_color := _item_color(item_id)
+	strip_color.a = 0.72
+	color_strip.color = strip_color
+	color_strip.anchor_left = 0.0
+	color_strip.anchor_right = 1.0
+	color_strip.anchor_top = 1.0
+	color_strip.anchor_bottom = 1.0
+	color_strip.offset_left = 4.0
+	color_strip.offset_right = -4.0
+	color_strip.offset_top = -5.0
+	color_strip.offset_bottom = -2.0
+	button.add_child(color_strip)
+
+	var count_text := _slot_count_text(quantity)
+	if count_text.is_empty():
+		return
+	var count := Label.new()
+	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	count.text = count_text
+	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	count.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	count.modulate = Color(1.0, 0.9, 0.28, 1.0)
+	count.add_theme_font_size_override("font_size", 11)
+	count.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.9))
+	count.add_theme_constant_override("shadow_offset_x", 1)
+	count.add_theme_constant_override("shadow_offset_y", 1)
+	count.anchor_left = 0.0
+	count.anchor_right = 1.0
+	count.anchor_top = 1.0
+	count.anchor_bottom = 1.0
+	count.offset_left = 2.0
+	count.offset_right = -4.0
+	count.offset_top = -19.0
+	count.offset_bottom = -2.0
+	button.add_child(count)
+
+
+func _add_panel_item_row(item_id: String, detail_text: String = "") -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	panel_body.add_child(row)
+
+	var stripe := ColorRect.new()
+	stripe.color = _item_color(item_id)
+	stripe.custom_minimum_size = Vector2(4, 24)
+	row.add_child(stripe)
+
+	row.add_child(_new_item_icon(item_id, Vector2(22, 22)))
+
+	var text := Label.new()
+	text.text = _item_name(item_id) if detail_text.is_empty() else "%s %s" % [_item_name(item_id), detail_text]
+	text.modulate = _item_color(item_id)
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(text)
 
 
 func _render_equipment_panel() -> void:
 	var equipment := _string_mapping(current_state.get("equipment", {}))
+	var frame := PanelContainer.new()
+	frame.custom_minimum_size = EQUIPMENT_PANEL_SIZE
+	frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	frame.add_theme_stylebox_override("panel", _equipment_frame_style())
+	panel_body.add_child(frame)
+
+	var canvas := Control.new()
+	canvas.custom_minimum_size = EQUIPMENT_PANEL_SIZE
+	frame.add_child(canvas)
+
+	_add_equipment_connector_lines(canvas)
+	_add_equipment_silhouette(canvas)
 	for slot in EQUIPMENT_SLOTS:
-		var item_id := str(equipment.get(slot, ""))
-		var text := "%s: " % _display_label(slot)
-		text += _item_name(item_id) if not item_id.is_empty() else "-"
-		_add_row(text)
+		_add_equipment_slot_tile(canvas, slot, str(equipment.get(slot, "")))
+	_add_equipment_bonus_summary(equipment)
+
+
+func _add_equipment_slot_tile(parent: Control, slot: String, item_id: String) -> void:
+	var button := ItemTooltipButton.new()
+	button.position = _equipment_slot_position(slot)
+	button.size = EQUIPMENT_SLOT_SIZE
+	button.custom_minimum_size = EQUIPMENT_SLOT_SIZE
+	button.clip_contents = true
+	button.text = ""
+	if not item_id.is_empty():
+		_apply_item_tooltip(button, item_id)
+	else:
+		button.tooltip_text = _display_label(slot)
+	button.add_theme_stylebox_override("normal", _equipment_slot_style(item_id, false))
+	button.add_theme_stylebox_override("hover", _equipment_slot_style(item_id, true))
+	button.add_theme_stylebox_override("pressed", _equipment_slot_style(item_id, true))
+	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	button.pressed.connect(func(selected_slot := slot) -> void: show_equipment_action_panel(selected_slot))
+	if not item_id.is_empty():
+		button.set_meta("item_name", _item_name(item_id))
+	parent.add_child(button)
+
+	if item_id.is_empty():
+		var slot_label := Label.new()
+		slot_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot_label.text = _equipment_slot_abbrev(slot)
+		slot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		slot_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		slot_label.modulate = Color(0.64, 0.64, 0.58, 1.0)
+		slot_label.add_theme_font_size_override("font_size", 9)
+		slot_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+		button.add_child(slot_label)
+		return
+
+	var center := CenterContainer.new()
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.offset_left = 3.0
+	center.offset_top = 3.0
+	center.offset_right = -3.0
+	center.offset_bottom = -5.0
+	button.add_child(center)
+
+	var icon := _new_item_icon(item_id, Vector2(34, 34))
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	center.add_child(icon)
+
+	var strip := ColorRect.new()
+	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var strip_color := _item_color(item_id)
+	strip_color.a = 0.82
+	strip.color = strip_color
+	strip.anchor_left = 0.0
+	strip.anchor_right = 1.0
+	strip.anchor_top = 1.0
+	strip.anchor_bottom = 1.0
+	strip.offset_left = 5.0
+	strip.offset_right = -5.0
+	strip.offset_top = -5.0
+	strip.offset_bottom = -2.0
+	button.add_child(strip)
+
+
+func _equipment_slot_position(slot: String) -> Vector2:
+	match slot:
+		"head":
+			return Vector2(103, 14)
+		"cape":
+			return Vector2(48, 58)
+		"amulet":
+			return Vector2(103, 62)
+		"ammo":
+			return Vector2(158, 58)
+		"weapon":
+			return Vector2(24, 110)
+		"body":
+			return Vector2(103, 110)
+		"shield":
+			return Vector2(182, 110)
+		"hands":
+			return Vector2(48, 178)
+		"legs":
+			return Vector2(103, 164)
+		"ring":
+			return Vector2(182, 178)
+		"feet":
+			return Vector2(103, 216)
+	return Vector2.ZERO
+
+
+func _equipment_slot_abbrev(slot: String) -> String:
+	match slot:
+		"head":
+			return "HEAD"
+		"cape":
+			return "CAPE"
+		"amulet":
+			return "NECK"
+		"ammo":
+			return "AMMO"
+		"weapon":
+			return "WEPN"
+		"body":
+			return "BODY"
+		"shield":
+			return "SHLD"
+		"hands":
+			return "HAND"
+		"legs":
+			return "LEGS"
+		"feet":
+			return "FEET"
+		"ring":
+			return "RING"
+	return _display_label(slot).to_upper()
+
+
+func _add_equipment_connector_lines(parent: Control) -> void:
+	var line_color := Color(0.34, 0.31, 0.25, 0.55)
+	_add_equipment_line(parent, Vector2(126, 60), Vector2(2, 184), line_color)
+	_add_equipment_line(parent, Vector2(70, 132), Vector2(112, 2), line_color)
+	_add_equipment_line(parent, Vector2(71, 202), Vector2(111, 2), line_color)
+	_add_equipment_line(parent, Vector2(126, 84), Vector2(56, 2), line_color)
+	_add_equipment_line(parent, Vector2(70, 84), Vector2(56, 2), line_color)
+
+
+func _add_equipment_line(parent: Control, line_position: Vector2, line_size: Vector2, color: Color) -> void:
+	var line := ColorRect.new()
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.position = line_position
+	line.size = line_size
+	line.color = color
+	parent.add_child(line)
+
+
+func _add_equipment_silhouette(parent: Control) -> void:
+	var body_color := Color(0.40, 0.38, 0.33, 0.55)
+	var limb_color := Color(0.32, 0.31, 0.28, 0.48)
+	_add_equipment_shape(parent, Vector2(116, 84), Vector2(20, 20), body_color, 10)
+	_add_equipment_shape(parent, Vector2(108, 108), Vector2(36, 54), body_color, 7)
+	_add_equipment_shape(parent, Vector2(88, 118), Vector2(16, 48), limb_color, 6)
+	_add_equipment_shape(parent, Vector2(148, 118), Vector2(16, 48), limb_color, 6)
+	_add_equipment_shape(parent, Vector2(110, 166), Vector2(13, 48), limb_color, 6)
+	_add_equipment_shape(parent, Vector2(129, 166), Vector2(13, 48), limb_color, 6)
+
+
+func _add_equipment_shape(parent: Control, shape_position: Vector2, shape_size: Vector2, color: Color, radius: int) -> void:
+	var shape := PanelContainer.new()
+	shape.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shape.position = shape_position
+	shape.size = shape_size
+	shape.add_theme_stylebox_override("panel", _flat_style(color, color, 0, radius))
+	parent.add_child(shape)
+
+
+func _equipment_frame_style() -> StyleBoxFlat:
+	return _flat_style(Color(0.13, 0.12, 0.10, 0.94), Color(0.36, 0.33, 0.27, 1.0), 2, 8)
+
+
+func _equipment_slot_style(item_id: String, is_hover: bool) -> StyleBoxFlat:
+	var background := Color(0.18, 0.17, 0.15, 0.96)
+	var border := Color(0.36, 0.34, 0.29, 1.0)
+	var border_width := 1
+	if not item_id.is_empty():
+		border = _item_color(item_id)
+		background = Color(0.20, 0.19, 0.17, 0.98)
+		border_width = 2
+	if is_hover:
+		background = background.lightened(0.08)
+		border = border.lightened(0.18)
+	return _flat_style(background, border, border_width, 5)
+
+
+func _flat_style(background: Color, border: Color, border_width: int, radius: int) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = background
+	style.border_color = border
+	style.border_width_left = border_width
+	style.border_width_top = border_width
+	style.border_width_right = border_width
+	style.border_width_bottom = border_width
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius
+	style.corner_radius_bottom_right = radius
+	return style
+
+
+func _add_equipment_bonus_summary(equipment: Dictionary) -> void:
+	var totals := _equipment_bonus_totals(equipment)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	panel_body.add_child(row)
+	_add_equipment_bonus_tile(row, "Atk", int(totals.get("attack_bonus", 0)))
+	_add_equipment_bonus_tile(row, "Str", int(totals.get("strength_bonus", 0)))
+	_add_equipment_bonus_tile(row, "Def", int(totals.get("defence_bonus", 0)))
+	_add_equipment_bonus_tile(row, "Rng", int(totals.get("ranged_bonus", 0)))
+	_add_equipment_bonus_tile(row, "Mag", int(totals.get("magic_bonus", 0)))
+
+
+func _add_equipment_bonus_tile(parent: HBoxContainer, label_text: String, value: int) -> void:
+	var tile := PanelContainer.new()
+	tile.custom_minimum_size = Vector2(48, 30)
+	tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tile.add_theme_stylebox_override("panel", _flat_style(Color(0.12, 0.12, 0.11, 0.92), Color(0.28, 0.27, 0.24, 1.0), 1, 4))
+	parent.add_child(tile)
+
+	var label := Label.new()
+	label.text = "%s %s" % [label_text, _equipment_bonus_value_text(value)]
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 10)
+	tile.add_child(label)
+
+
+func _equipment_bonus_totals(equipment: Dictionary) -> Dictionary:
+	var totals := {}
+	for key in EQUIPMENT_BONUS_KEYS:
+		totals[key] = 0
+	for slot in equipment.keys():
+		var item_id := str(equipment[slot])
+		var definition = items_data.get(item_id, {})
+		if not (definition is Dictionary):
+			continue
+		for key in EQUIPMENT_BONUS_KEYS:
+			totals[key] = int(totals[key]) + int(definition.get(key, 0))
+	return totals
+
+
+func _equipment_bonus_value_text(value: int) -> String:
+	if value > 0:
+		return "+%d" % value
+	return str(value)
 
 
 func _render_skills_panel() -> void:
@@ -487,14 +1131,22 @@ func _render_skills_panel() -> void:
 	if not (skills is Dictionary):
 		_add_muted_label("No skills available")
 		return
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel_body.add_child(grid)
+	var rendered_count := 0
 	for skill_id in _sorted_skill_ids(skills):
 		var values = skills[skill_id]
 		if not (values is Dictionary):
 			continue
-		var label := _skill_name(skill_id)
-		var level := int(values.get("level", 1))
-		var xp := int(values.get("xp", 0))
-		_add_row("%s  Lv %d  XP %d" % [label, level, xp])
+		_add_skill_tile(grid, skill_id, values)
+		rendered_count += 1
+	if rendered_count == 0:
+		grid.queue_free()
+		_add_muted_label("No skills available")
 
 
 func _render_quests_panel() -> void:
@@ -507,68 +1159,292 @@ func _render_quests_panel() -> void:
 	if definitions.is_empty():
 		_add_muted_label("No quests available")
 		return
+	var shown := {}
 	if definitions.has(active_quest_id):
 		_add_section_label("Active")
 		_add_quest_row(active_quest_id, definitions[active_quest_id], quest_states.get(active_quest_id, {}))
+		shown[active_quest_id] = true
 	_add_section_label("Started")
-	var shown_count := 0
+	var started_ids: Array[String] = []
 	for quest_id in quest_states.keys():
-		if str(quest_id) == active_quest_id:
+		var clean_id := str(quest_id)
+		if shown.has(clean_id):
 			continue
 		var state = quest_states[quest_id]
-		if state is Dictionary and (bool(state.get("started", false)) or bool(state.get("completed", false))) and definitions.has(str(quest_id)):
-			_add_quest_row(str(quest_id), definitions[str(quest_id)], state)
-			shown_count += 1
-	if shown_count == 0 and not quest_states.has(active_quest_id):
+		if state is Dictionary and (bool(state.get("started", false)) or bool(state.get("completed", false))) and definitions.has(clean_id):
+			started_ids.append(clean_id)
+	started_ids.sort_custom(func(left: String, right: String) -> bool: return _quest_title(left, definitions) < _quest_title(right, definitions))
+	for quest_id in started_ids:
+		_add_quest_row(quest_id, definitions[quest_id], quest_states.get(quest_id, {}))
+		shown[quest_id] = true
+	if started_ids.is_empty() and not quest_states.has(active_quest_id):
 		_add_muted_label("No started quests")
 	_add_section_label("Available")
-	var available_count := 0
+	var available_ids: Array[String] = []
 	for quest_id in definitions.keys():
-		if quest_states.has(str(quest_id)):
+		var clean_id := str(quest_id)
+		if quest_states.has(clean_id) or shown.has(clean_id):
 			continue
-		available_count += 1
-		if available_count <= 6:
-			var definition: Dictionary = definitions[quest_id]
-			_add_row("%s: %s" % [str(definition.get("display_name", quest_id)), str(definition.get("not_started_objective", "Talk to the quest giver."))])
-	if available_count == 0:
+		available_ids.append(clean_id)
+	available_ids.sort_custom(func(left: String, right: String) -> bool: return _quest_title(left, definitions) < _quest_title(right, definitions))
+	for quest_id in available_ids:
+		_add_quest_row(quest_id, definitions[quest_id], {})
+	if available_ids.is_empty():
 		_add_muted_label("All quests have been started")
+
+
+func _add_skill_tile(parent: GridContainer, skill_id: String, values: Dictionary) -> void:
+	var tile := PanelContainer.new()
+	tile.custom_minimum_size = Vector2(119, 46)
+	tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tile.set_meta("skill_id", skill_id)
+	tile.set_meta("skill_icon_loaded", _skill_icon_path(skill_id) != FALLBACK_ICON_PATH)
+	tile.add_theme_stylebox_override("panel", _skill_tile_style(skill_id))
+	parent.add_child(tile)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 5)
+	margin.add_theme_constant_override("margin_top", 5)
+	margin.add_theme_constant_override("margin_right", 5)
+	margin.add_theme_constant_override("margin_bottom", 5)
+	tile.add_child(margin)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 5)
+	margin.add_child(row)
+
+	var icon := _new_skill_icon(skill_id, Vector2(28, 28))
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(icon)
+
+	var text_stack := VBoxContainer.new()
+	text_stack.add_theme_constant_override("separation", 0)
+	text_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(text_stack)
+
+	var name_label := Label.new()
+	name_label.text = _skill_name(skill_id)
+	name_label.clip_text = true
+	name_label.add_theme_font_size_override("font_size", 12)
+	text_stack.add_child(name_label)
+
+	var detail_label := Label.new()
+	detail_label.text = "Lv %d  XP %s" % [int(values.get("level", 1)), _compact_number(int(values.get("xp", 0)))]
+	detail_label.modulate = Color(0.74, 0.74, 0.70, 1.0)
+	detail_label.clip_text = true
+	detail_label.add_theme_font_size_override("font_size", 10)
+	text_stack.add_child(detail_label)
 
 
 func _add_quest_row(quest_id: String, definition: Dictionary, quest_state) -> void:
 	var state: Dictionary = quest_state if quest_state is Dictionary else {}
 	var title := str(definition.get("display_name", _display_label(quest_id)))
-	var status: String = "complete" if bool(state.get("completed", false)) else ("active" if bool(state.get("started", false)) else "not started")
-	_add_row("%s (%s)" % [title, status])
-	_add_muted_label(_quest_objective_text(definition, state))
+	var status := _quest_status_text(state)
+	var row_panel := PanelContainer.new()
+	row_panel.custom_minimum_size = Vector2(0, 54)
+	row_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row_panel.add_theme_stylebox_override("panel", _quest_row_style(status))
+	panel_body.add_child(row_panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 6)
+	margin.add_theme_constant_override("margin_top", 5)
+	margin.add_theme_constant_override("margin_right", 6)
+	margin.add_theme_constant_override("margin_bottom", 5)
+	row_panel.add_child(margin)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	margin.add_child(row)
+
+	var stripe := ColorRect.new()
+	stripe.color = _quest_status_color(status)
+	stripe.custom_minimum_size = Vector2(4, 36)
+	row.add_child(stripe)
+
+	var icon := _new_asset_icon("ui/quest", Vector2(24, 24))
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(icon)
+
+	var text_stack := VBoxContainer.new()
+	text_stack.add_theme_constant_override("separation", 1)
+	text_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(text_stack)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 5)
+	text_stack.add_child(header)
+
+	var title_label := Label.new()
+	title_label.text = title
+	title_label.clip_text = true
+	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title_label)
+
+	var status_label := Label.new()
+	status_label.text = status
+	status_label.modulate = _quest_status_color(status)
+	status_label.add_theme_font_size_override("font_size", 10)
+	header.add_child(status_label)
+
+	var objective_label := Label.new()
+	objective_label.text = _quest_objective_text(definition, state)
+	objective_label.modulate = Color(0.74, 0.74, 0.70, 1.0)
+	objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	objective_label.add_theme_font_size_override("font_size", 10)
+	text_stack.add_child(objective_label)
+
+
+func _skill_tile_style(skill_id: String) -> StyleBoxFlat:
+	var accent := _skill_color(skill_id)
+	return _flat_style(Color(0.11, 0.15, 0.10, 0.92), accent, 1, 5)
+
+
+func _skill_color(skill_id: String) -> Color:
+	match skill_id:
+		"attack":
+			return Color(0.92, 0.46, 0.32, 1.0)
+		"strength":
+			return Color(0.90, 0.60, 0.30, 1.0)
+		"defence":
+			return Color(0.52, 0.66, 0.84, 1.0)
+		"hitpoints":
+			return Color(0.78, 0.38, 0.40, 1.0)
+		"ranged":
+			return Color(0.48, 0.72, 0.44, 1.0)
+		"magic":
+			return Color(0.58, 0.52, 0.90, 1.0)
+		"woodcutting", "carpentry":
+			return Color(0.70, 0.50, 0.26, 1.0)
+		"mining", "smithing":
+			return Color(0.72, 0.70, 0.64, 1.0)
+		"fishing":
+			return Color(0.48, 0.72, 0.90, 1.0)
+		"foraging", "herbalism":
+			return Color(0.58, 0.78, 0.42, 1.0)
+	return Color(0.88, 0.80, 0.64, 1.0)
+
+
+func _quest_row_style(status: String) -> StyleBoxFlat:
+	return _flat_style(Color(0.11, 0.15, 0.10, 0.90), _quest_status_color(status), 1, 5)
+
+
+func _quest_status_color(status: String) -> Color:
+	match status:
+		"Complete":
+			return Color(0.52, 0.80, 0.58, 1.0)
+		"Active":
+			return Color(0.98, 0.82, 0.34, 1.0)
+	return Color(0.60, 0.62, 0.56, 1.0)
 
 
 func _render_state_summary_panel() -> void:
+	_add_section_label("Character")
 	var time_state = current_state.get("time", {})
 	if time_state is Dictionary:
-		_add_row("Day %d  Minute %d" % [int(time_state.get("day", 1)), int(time_state.get("minute", 0))])
+		_add_row(_time_summary(time_state))
 	var combat = current_state.get("combat", {})
 	if combat is Dictionary:
-		_add_row("HP: %d" % int(combat.get("current_hitpoints", 0)))
-	var quest_progress = current_state.get("quest_progress", current_state.get("quest_state", {}))
-	_add_section_label("Quest progress")
-	if quest_progress is Dictionary and not quest_progress.is_empty():
-		for quest_id in quest_progress.keys():
-			_add_row("%s: %s" % [_display_label(str(quest_id)), str(quest_progress[quest_id])])
-	else:
-		_add_muted_label("No active quest progress")
+		var current_hp := int(combat.get("current_hitpoints", 0))
+		var max_hp := int(combat.get("max_hitpoints", current_hp))
+		if max_hp > current_hp:
+			_add_row("HP %d / %d" % [current_hp, max_hp])
+		else:
+			_add_row("HP %d" % current_hp)
+	_render_state_quest_summary()
 	var settings = current_state.get("settings", {})
-	_add_section_label("Settings")
 	if settings is Dictionary and not settings.is_empty():
+		_add_section_label("Settings")
 		for setting_id in settings.keys():
 			_add_row("%s: %s" % [_display_label(str(setting_id)), str(settings[setting_id])])
-	else:
-		_add_muted_label("No settings saved")
-	_add_section_label("Feedback")
-	if chat_messages.is_empty():
-		_add_muted_label("No feedback yet")
-	else:
-		for message in chat_messages:
-			_add_row(message)
+	if not chat_messages.is_empty():
+		_add_section_label("Recent feedback")
+		var first_message: int = int(max(0, chat_messages.size() - 5))
+		for index in range(first_message, chat_messages.size()):
+			_add_row(str(chat_messages[index]))
+
+
+func _time_summary(time_state: Dictionary) -> String:
+	var day := int(time_state.get("day", 1))
+	var minute_of_day := int(time_state.get("minute", 0))
+	var hour := int(floor(float(minute_of_day) / 60.0)) % 24
+	var minute := minute_of_day % 60
+	return "Day %d, %02d:%02d" % [day, hour, minute]
+
+
+func _render_state_quest_summary() -> void:
+	_add_section_label("Quests")
+	var quest_root := _quest_root()
+	var quest_states = quest_root.get("quests", {})
+	if not (quest_states is Dictionary):
+		quest_states = {}
+	var definitions := _quest_definitions()
+	var active_quest_id := str(quest_root.get("active_quest_id", ""))
+	var shown := {}
+	var shown_count := 0
+	if not active_quest_id.is_empty():
+		if _add_state_quest_row(active_quest_id, definitions, quest_states, true):
+			shown[active_quest_id] = true
+			shown_count += 1
+	var quest_ids: Array[String] = []
+	for quest_id in quest_states.keys():
+		var clean_id := str(quest_id)
+		if shown.has(clean_id):
+			continue
+		quest_ids.append(clean_id)
+	quest_ids.sort_custom(func(left: String, right: String) -> bool: return _quest_title(left, definitions) < _quest_title(right, definitions))
+	for quest_id in quest_ids:
+		if _add_state_quest_row(quest_id, definitions, quest_states, false):
+			shown_count += 1
+	if shown_count == 0:
+		_add_muted_label("No quest progress")
+
+
+func _add_state_quest_row(quest_id: String, definitions: Dictionary, quest_states: Dictionary, force_show: bool) -> bool:
+	var state = quest_states.get(quest_id, {})
+	if not (state is Dictionary):
+		state = {}
+	if not force_show and not _quest_state_has_progress(state):
+		return false
+	var definition = definitions.get(quest_id, {})
+	if not (definition is Dictionary):
+		definition = {}
+	_add_row("%s - %s" % [_quest_title(quest_id, definitions), _quest_status_text(state)])
+	if not definition.is_empty():
+		_add_muted_label(_quest_objective_text(definition, state))
+	var flags = state.get("flags", [])
+	if flags is Array and not flags.is_empty():
+		_add_muted_label("Done: %s" % _readable_flags(flags))
+	return true
+
+
+func _quest_title(quest_id: String, definitions: Dictionary) -> String:
+	var definition = definitions.get(quest_id, {})
+	if definition is Dictionary:
+		return str(definition.get("display_name", _display_label(quest_id)))
+	return _display_label(quest_id)
+
+
+func _quest_status_text(state: Dictionary) -> String:
+	if bool(state.get("completed", false)):
+		return "Complete"
+	if bool(state.get("started", false)):
+		return "Active"
+	return "Not started"
+
+
+func _quest_state_has_progress(state: Dictionary) -> bool:
+	if bool(state.get("started", false)) or bool(state.get("completed", false)):
+		return true
+	var flags = state.get("flags", [])
+	return flags is Array and not flags.is_empty()
+
+
+func _readable_flags(flags: Array) -> String:
+	var readable: PackedStringArray = []
+	for flag in flags:
+		readable.append(_display_label(str(flag)))
+	return ", ".join(readable)
 
 
 func _quest_root() -> Dictionary:
@@ -625,6 +1501,7 @@ func _add_muted_label(text: String) -> void:
 	var label := Label.new()
 	label.text = text
 	label.modulate = Color(0.72, 0.72, 0.72, 1.0)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	panel_body.add_child(label)
 
 
@@ -668,6 +1545,126 @@ func _slot_button_text(view: Dictionary) -> String:
 	return _compact_item_name(item_id)
 
 
+func _slot_count_text(quantity: int) -> String:
+	if quantity <= 1:
+		return ""
+	if quantity >= 1000000:
+		return "%dm" % int(quantity / 1000000)
+	if quantity >= 10000:
+		return "%dk" % int(quantity / 1000)
+	return str(quantity)
+
+
+func _compact_number(value: int) -> String:
+	if value >= 1000000:
+		return "%dm" % int(value / 1000000)
+	if value >= 10000:
+		return "%dk" % int(value / 1000)
+	return str(value)
+
+
+func _apply_item_tooltip(button: Button, item_id: String, quantity: int = 1) -> void:
+	button.tooltip_text = _item_tooltip(item_id, quantity)
+	button.set_meta("tooltip_accent", _item_color(item_id))
+
+
+func _item_tooltip(item_id: String, quantity: int = 1) -> String:
+	var definition = items_data.get(item_id, {})
+	var lines: Array[String] = [_item_name(item_id)]
+	var details: Array[String] = []
+	var bonuses: Array[String] = []
+	var effects: Array[String] = []
+	var requirements: Array[String] = []
+	if quantity > 1:
+		details.append("Quantity: %d" % quantity)
+	if definition is Dictionary:
+		var category := str(definition.get("category", "misc"))
+		details.append("Category: %s" % category)
+		var sell_price := int(definition.get("sell_price", 0))
+		if sell_price > 0:
+			details.append("Sell: %d coins" % sell_price)
+		if _definition_is_equipment(definition):
+			details.append("Equip: %s" % _display_label(str(definition.get("equip_slot", ""))))
+			bonuses.append_array(_equipment_bonus_lines(definition))
+		if int(definition.get("heal_amount", 0)) > 0:
+			effects.append("Heals %d HP" % int(definition["heal_amount"]))
+		if bool(definition.get("cleanses_poison", false)):
+			effects.append("Clears poison")
+		effects.append_array(_usable_bonus_lines(definition))
+		var requirement_text := _requirement_text(definition)
+		if not requirement_text.is_empty():
+			requirements.append("Requires: %s" % requirement_text)
+	_add_tooltip_section(lines, "Details", details)
+	_add_tooltip_section(lines, "Bonuses", bonuses)
+	_add_tooltip_section(lines, "Effects", effects)
+	_add_tooltip_section(lines, "Requirements", requirements)
+	return "\n".join(lines)
+
+
+func _add_tooltip_section(lines: Array[String], title: String, entries: Array[String]) -> void:
+	if entries.is_empty():
+		return
+	lines.append("")
+	lines.append(title)
+	lines.append_array(entries)
+
+
+func _equipment_item_summary(item_id: String) -> String:
+	var definition = items_data.get(item_id, {})
+	if not (definition is Dictionary):
+		return ""
+	var parts: Array[String] = _equipment_bonus_lines(definition)
+	var requirement_text := _requirement_text(definition)
+	if not requirement_text.is_empty():
+		parts.append("Requires: %s" % requirement_text)
+	return " | ".join(parts)
+
+
+func _equipment_bonus_lines(definition: Dictionary) -> Array[String]:
+	var lines: Array[String] = []
+	for key in EQUIPMENT_BONUS_KEYS:
+		var bonus := int(definition.get(key, 0))
+		if bonus > 0:
+			lines.append("%s +%d" % [_display_label(key.replace("_bonus", "")), bonus])
+	return lines
+
+
+func _usable_bonus_lines(definition: Dictionary) -> Array[String]:
+	var lines: Array[String] = []
+	for key in USABLE_BONUS_KEYS:
+		var bonus := float(definition.get(key, 0.0))
+		if bonus <= 0.0:
+			continue
+		if key == "action_speed_bonus":
+			lines.append("Actions %d%% faster" % int(round(bonus * 100.0)))
+		else:
+			lines.append("%s +%d" % [_display_label(key.replace("_bonus", "")), int(bonus)])
+	var duration := int(definition.get("effect_duration_seconds", 0))
+	if not lines.is_empty() and duration > 0:
+		lines.append("Lasts %ds" % duration)
+	return lines
+
+
+func _requirement_text(definition: Dictionary) -> String:
+	var requirements = definition.get("required_skills", {})
+	if not (requirements is Dictionary) or requirements.is_empty():
+		return ""
+	var texts: Array[String] = []
+	for skill_id in requirements.keys():
+		texts.append("%s %d" % [_skill_name(str(skill_id)), int(requirements[skill_id])])
+	return ", ".join(texts)
+
+
+func _definition_is_equipment(definition: Dictionary) -> bool:
+	return not str(definition.get("equip_slot", "")).is_empty()
+
+
+func _definition_is_usable(definition: Dictionary) -> bool:
+	if int(definition.get("heal_amount", 0)) > 0 or bool(definition.get("cleanses_poison", false)):
+		return true
+	return not _usable_bonus_lines(definition).is_empty()
+
+
 func _sorted_item_ids(items: Dictionary) -> Array[String]:
 	var ids: Array[String] = []
 	for item_id in items.keys():
@@ -691,8 +1688,84 @@ func _sorted_skill_ids(skills: Dictionary) -> Array[String]:
 	var ids: Array[String] = []
 	for skill_id in skills.keys():
 		ids.append(str(skill_id))
-	ids.sort_custom(func(left: String, right: String) -> bool: return _skill_name(left) < _skill_name(right))
+	ids.sort_custom(func(left: String, right: String) -> bool:
+		var left_rank := _skill_order_rank(left)
+		var right_rank := _skill_order_rank(right)
+		if left_rank == right_rank:
+			return _skill_name(left) < _skill_name(right)
+		return left_rank < right_rank
+	)
 	return ids
+
+
+func _skill_order_rank(skill_id: String) -> int:
+	var index := SKILL_DISPLAY_ORDER.find(skill_id)
+	if index >= 0:
+		return index
+	return SKILL_DISPLAY_ORDER.size()
+
+
+func _interaction_contains_button(text: String) -> bool:
+	if interaction_body == null:
+		return false
+	for child in interaction_body.get_children():
+		if child is Button and child.text == text:
+			return true
+	return false
+
+
+func _panel_contains_button(text: String) -> bool:
+	if panel_body == null:
+		return false
+	for child in panel_body.get_children():
+		if _control_tree_contains_button_text(child, text):
+			return true
+	return false
+
+
+func _panel_skill_ids_for_smoke() -> Array[String]:
+	var ids: Array[String] = []
+	if panel_body == null:
+		return ids
+	for child in panel_body.get_children():
+		_collect_skill_ids_for_smoke(child, ids)
+	return ids
+
+
+func _collect_skill_ids_for_smoke(node: Node, ids: Array[String]) -> void:
+	if node.has_meta("skill_id"):
+		ids.append(str(node.get_meta("skill_id")))
+	for child in node.get_children():
+		_collect_skill_ids_for_smoke(child, ids)
+
+
+func _panel_contains_skill_icon(skill_id: String) -> bool:
+	if panel_body == null:
+		return false
+	return _control_tree_contains_skill_icon(panel_body, skill_id)
+
+
+func _control_tree_contains_skill_icon(node: Node, skill_id: String) -> bool:
+	if node.has_meta("skill_id") and str(node.get_meta("skill_id")) == skill_id:
+		return bool(node.get_meta("skill_icon_loaded", false))
+	for child in node.get_children():
+		if _control_tree_contains_skill_icon(child, skill_id):
+			return true
+	return false
+
+
+func _control_tree_contains_button_text(node: Node, text: String) -> bool:
+	if node is Button:
+		if node.text == text or node.tooltip_text == text:
+			return true
+		if node.has_meta("item_name") and str(node.get_meta("item_name")) == text:
+			return true
+	if node is Label and node.text == text:
+		return true
+	for child in node.get_children():
+		if _control_tree_contains_button_text(child, text):
+			return true
+	return false
 
 
 func _stack_mapping(raw_value) -> Dictionary:
@@ -715,6 +1788,87 @@ func _string_mapping(raw_value) -> Dictionary:
 	return clean
 
 
+func _new_skill_icon(skill_id: String, size: Vector2) -> TextureRect:
+	return _new_asset_icon(_skill_icon_key(skill_id), size)
+
+
+func _new_asset_icon(icon_key: String, size: Vector2) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.custom_minimum_size = size
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture = _asset_icon_texture(icon_key)
+	return icon
+
+
+func _asset_icon_texture(icon_key: String):
+	var path := _asset_icon_path(icon_key)
+	if item_icon_cache.has(path):
+		return item_icon_cache[path]
+	var texture = ResourceLoader.load(path)
+	if texture == null and path != FALLBACK_ICON_PATH:
+		texture = ResourceLoader.load(FALLBACK_ICON_PATH)
+	item_icon_cache[path] = texture
+	return texture
+
+
+func _asset_icon_path(icon_key: String) -> String:
+	var path := "res://assets/icons/%s.png" % icon_key
+	if ResourceLoader.exists(path):
+		return path
+	return FALLBACK_ICON_PATH
+
+
+func _new_item_icon(item_id: String, size: Vector2) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.custom_minimum_size = size
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture = _item_icon_texture(item_id)
+	return icon
+
+
+func _item_icon_texture(item_id: String):
+	var path := _item_icon_path(item_id)
+	if item_icon_cache.has(path):
+		return item_icon_cache[path]
+	var texture = ResourceLoader.load(path)
+	if texture == null and path != FALLBACK_ICON_PATH:
+		texture = ResourceLoader.load(FALLBACK_ICON_PATH)
+	item_icon_cache[path] = texture
+	return texture
+
+
+func _item_icon_path(item_id: String) -> String:
+	var key := _item_icon_key(item_id)
+	var path := "res://assets/icons/%s.png" % key
+	if ResourceLoader.exists(path):
+		return path
+	return FALLBACK_ICON_PATH
+
+
+func _item_icon_key(item_id: String) -> String:
+	var definition = items_data.get(item_id, {})
+	if definition is Dictionary:
+		var explicit_icon := str(definition.get("icon", ""))
+		if not explicit_icon.is_empty():
+			return explicit_icon
+	return "items/%s" % item_id
+
+
+func _item_color(item_id: String) -> Color:
+	return CATEGORY_COLORS.get(_item_category(item_id), CATEGORY_COLORS["misc"])
+
+
+func _item_category(item_id: String) -> String:
+	var definition = items_data.get(item_id, {})
+	if definition is Dictionary:
+		return str(definition.get("category", "misc"))
+	return "misc"
+
+
 func _item_name(item_id: String) -> String:
 	if item_id.is_empty():
 		return ""
@@ -726,9 +1880,9 @@ func _item_name(item_id: String) -> String:
 
 func _compact_item_name(item_id: String) -> String:
 	var words := _item_name(item_id).split(" ")
-	if words.size() <= 2:
+	if words.size() <= 1:
 		return _item_name(item_id)
-	return "%s %s" % [words[0], words[1]]
+	return "%s\n%s" % [words[0], words[1]]
 
 
 func _skill_name(skill_id: String) -> String:
@@ -736,6 +1890,19 @@ func _skill_name(skill_id: String) -> String:
 	if definition is Dictionary:
 		return str(definition.get("display_name", _display_label(skill_id)))
 	return _display_label(skill_id)
+
+
+func _skill_icon_key(skill_id: String) -> String:
+	var definition = skills_data.get(skill_id, {})
+	if definition is Dictionary:
+		var explicit_icon := str(definition.get("icon", ""))
+		if not explicit_icon.is_empty():
+			return explicit_icon
+	return "skills/%s" % skill_id
+
+
+func _skill_icon_path(skill_id: String) -> String:
+	return _asset_icon_path(_skill_icon_key(skill_id))
 
 
 func _is_stackable_item(item_id: String) -> bool:

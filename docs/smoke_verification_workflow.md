@@ -19,6 +19,70 @@ Get-Process | Where-Object { $_.ProcessName -like '*Godot*' } | Select-Object Id
 Stop-Process -Id <stale_pid> -Force
 ```
 
+## Headless Playtest Simulation
+
+Use the Godot-native playtest simulation runner for longer seeded automated playtest simulation bot runs that record bugs, softlocks, QOL annoyances, and balance signals. The clickable launcher publishes user-facing outputs under `.godot/ai_simulation/latest/`, and detailed generated reports stay under `.godot/ai_simulation/archive/`.
+
+For the simplest workflow, double-click `RUN_AI_SIMULATION_PROMPT.bat` in the project root. It is a thin clickable wrapper around the direct Godot command, opens an interactive tier menu, shows command-line progress while Godot is running, publishes `ai_simulation_latest_codex_prompt.md` when publish safety allows it, then opens that prompt in Notepad so it can be pasted into Codex.
+
+Clickable tiers:
+
+- Strategy Smoke: 12 runs, 150 steps, seed 1, scenario `all`, trace `issues`, balance profile `default`, 60 second cap. This is the recommended first choice.
+- Medium: 1000 runs, 300 steps, 10 minute cap. Use for normal balance and progression signal after the workflow is stable.
+- Deep: 10000 runs, 720 steps, 3 hour cap. Use for broad stochastic coverage.
+- Overnight: 16000 runs, 1800 steps, 10 hour cap. Use only for unattended sweeps.
+
+Scenarios:
+
+- `all`: rotate through every scenario.
+- `core_loop`: gather, process, sell/use, and progression pressure.
+- `quest_chaser`: NPC dialogue and quest start/complete flow.
+- `economy_stress`: bank and shop transaction pressure.
+- `combat_loot`: combat, drops, and recovery behavior.
+- `inventory_pressure`: capacity, drop, bank, and cleanup behavior.
+- `random_guard`: broader randomized guard path.
+
+Trace modes:
+
+- `issues`: compact default; records run summaries and replayable issue samples.
+- `all`: verbose debug mode; also writes `trace.jsonl` with every bot action.
+
+Balance profiles:
+
+- `default`: broad coverage across every scenario.
+- `progression`: emphasizes core loop, quest completion, XP, and inventory pressure.
+- `economy`: emphasizes shop/bank pressure, coin flow, sell value, and net worth.
+- `combat`: emphasizes combat, survival, recovery pressure, mob defeats, and loot value.
+- `coverage`: broad coverage with extra random-guard pressure.
+
+For automation or tuned runs, prefer the direct Godot command below. The root `.bat` accepts the same practical launch values as positional arguments when a clickable project-root launcher is more convenient:
+
+```powershell
+.\RUN_AI_SIMULATION_PROMPT.bat 1000 300 1 all issues default
+```
+
+```powershell
+& 'C:\Users\donny\Desktop\Godot_v4.7-stable_win64.exe' --headless --path . --script res://scripts/playtest_simulation_runner.gd --log-file .godot_logs\playtest_simulation.log -- --runs 1000 --steps 300 --seed 1 --scenario all --trace issues --balance-profile default --output-dir res://.godot/ai_simulation/_working/current --publish-latest --public-output-root res://.godot/ai_simulation
+```
+
+Replay a specific issue sample with the seed and scenario from `issues.jsonl`:
+
+```powershell
+& 'C:\Users\donny\Desktop\Godot_v4.7-stable_win64.exe' --headless --path . --script res://scripts/playtest_simulation_runner.gd --log-file .godot_logs\playtest_replay.log -- --runs 1 --steps 300 --seed <seed> --scenario <scenario> --trace all
+```
+
+Public latest outputs are `.godot/ai_simulation/latest/ai_simulation_latest.json`, `.godot/ai_simulation/latest/ai_simulation_latest.md`, `.godot/ai_simulation/latest/ai_simulation_latest_codex_prompt.md`, `.godot/ai_simulation/latest/ai_simulation_latest_polish_telemetry.json`, and `.godot/ai_simulation/latest/ai_simulation_latest_manual_polish_review.md`. Before a successful publish replaces `latest`, the previous `latest` files move into `.godot/ai_simulation/archive/<timestamp>/previous_latest`, and the new run's detailed reports are copied into `.godot/ai_simulation/archive/<timestamp>/full_reports`. Internal reports include `runs.jsonl`, `issues.jsonl`, `summary.json`, `replay_manifest.json`, `telemetry_summary.json`, `balance_profiles.json`, `performance_observations.json`, `polish_telemetry.json`, `manual_polish_review.md`, `improvement_plan.md`, and `codex_prompt.md`; `progress.json` is transient live status for the command-line progress bar. `trace.jsonl` is also written when trace mode is `all`, and issue samples can write JSON-safe failed-state snapshots under `snapshots/`. Paste `ai_simulation_latest_codex_prompt.md` into a new Codex thread when you want an implementation agent to verify and fix the ranked findings. Simulation and polish findings are evidence candidates, not proof; verify each finding against current code, data, deterministic replay, or manual review before changing gameplay. By default the command exits `0` when the harness completes, even if it finds issues; add `--fail-on-issues` only when issue findings should fail the run.
+
+Generated reports include a `trust` block with `run_strength`, `coverage_scope`, `implementation_ready`, `harness_status`, `finding_status`, `latest_publish_status`, and replay hash guidance. `publish_smoke` reports are not implementation-ready and generated Markdown says so in the first screen. `latest` publishing blocks lower-coverage output from replacing stronger output by default; set `HV_SIM_ALLOW_LATEST_DOWNGRADE=1` to allow that replacement, or `HV_SIM_REQUIRE_PUBLISH_LATEST=1` when a blocked publish should fail automation. Replay evidence is valid only for the code/data hashes recorded in `replay_manifest.json`; if `build_hash`, any `data_hashes`, or any `script_hashes` differ, the replay is under changed code and cannot close the original issue by itself.
+
+## Quality Tooling Ownership
+
+Use `docs/codex_phase_driver_prompt.md` when advancing the broader quality/dev-tooling plan one phase at a time.
+
+Keep simulation-specific work in `scripts/playtest_simulation_runner.gd` and its generated reports: deterministic replay metadata, AI director/chaos behavior, simulation-step invariant checks, local telemetry summaries, balance simulation profiles, human-facing polish telemetry, failed-run state summaries, and advisory simulation performance observations.
+
+Keep validators, golden scenario smokes, save/load torture smokes, debug command console, and debug overlays runnable without the simulation bot. Shared logic such as invariants or future snapshots should live in reusable helpers that both the focused smokes and simulation runner can call.
+
 ## Focused Checks
 
 | Area | Script | Expected output |
@@ -27,6 +91,7 @@ Stop-Process -Id <stale_pid> -Force
 | Save/load | `res://scripts/save_roundtrip_smoke.gd` | `Hearthvale save round-trip smoke passed.` |
 | 3D movement and object interaction shell | `res://scripts/playable_shell_smoke.gd` | `Hearthvale playable shell smoke passed.` |
 | Blocked-tile routing and near-tile interaction range | `res://scripts/pathfinding_interaction_smoke.gd` | `Hearthvale pathfinding interaction smoke passed.` |
+| Camera controls and minimap sync | `res://scripts/camera_minimap_smoke.gd` | `Hearthvale camera minimap smoke passed.` |
 | Godot-native visual-kind recreation coverage | `res://scripts/visual_recreation_smoke.gd` | `Hearthvale visual recreation smoke passed.` |
 | Inventory/equipment/skills/state UI | `res://scripts/ui_state_smoke.gd` | `Hearthvale UI state smoke passed.` |
 | Bank, shop, and NPC interaction panels | `res://scripts/interaction_panel_smoke.gd` | `Hearthvale interaction panel smoke passed.` |
@@ -34,6 +99,11 @@ Stop-Process -Id <stale_pid> -Force
 | Combat status effects, training style XP, and persistence | `res://scripts/combat_depth_smoke.gd` | `Hearthvale combat depth smoke passed.` |
 | Timed actions, resource respawns, and deterministic chances | `res://scripts/timed_action_smoke.gd` | `Hearthvale timed action smoke passed.` |
 | Bank, shop, NPC dialogue, quests, rewards | `res://scripts/economy_quest_smoke.gd` | `Hearthvale economy and quest smoke passed.` |
+| Golden fixed gameplay scenarios | `res://scripts/golden_scenarios_smoke.gd` | `Hearthvale golden scenarios smoke passed.` |
+| Save/load torture scenarios | `res://scripts/save_load_torture_smoke.gd` | `Hearthvale save/load torture smoke passed.` |
+| Dev-only debug command console | `res://scripts/debug_command_console_smoke.gd` | `Hearthvale debug command console smoke passed.` |
+| Dev-only debug overlays | `res://scripts/debug_overlay_smoke.gd` | `Hearthvale debug overlay smoke passed.` |
+| State snapshot/export/restore helpers | `res://scripts/state_snapshot_smoke.gd` | `Hearthvale state snapshot smoke passed.` |
 | Progression regression, capacity, transactions, food, persistence | `res://scripts/progression_regression_smoke.gd` | `Hearthvale progression regression smoke passed.` |
 | Data, asset, and originality validation | `res://scripts/data_validation_smoke.gd` | `Hearthvale data validation smoke passed.` |
 | Asset manifest fallback paths | `res://scripts/asset_fallback_smoke.gd` | `Hearthvale asset fallback smoke passed.` |
@@ -45,6 +115,16 @@ All focused checks passed with `C:\Users\donny\Desktop\Godot_v4.7-stable_win64.e
 The save smoke overrides `StateStore.save_dir` to `res://.godot_smoke_saves` so verification writes inside this workspace. Normal runtime still defaults to `user://saves`.
 
 The progression regression smoke expands the old Python progression-smoke intent into Godot-native assertions for full-inventory gather/drop blocking, stackable additions at capacity, gather -> process -> cook/smith progression, shop buy/sell capacity and affordability guards, bank deposit/withdraw and partial-withdraw round trips, all-or-nothing quest reward blocking and recovery, invalid transaction quantity guards, food healing/full-health guard behavior, level-up unlock feedback, equipment, drop pickup, and save round-trip preservation of inventory, bank, equipment, skills, combat/world, and quest state.
+
+The golden scenarios smoke runs compact fixed scenarios for gather -> craft/process -> sell/use -> XP progression, inventory overflow and stackable-at-capacity behavior, quest start/objective/reward-blocking/completion, combat -> loot -> recovery, bank/shop round trips, shared state invariants, and save/load after meaningful progression.
+
+The save/load torture smoke saves, reloads, and continues after combat/status effects, poison cleansing, quest reward blocking/completion, bank/shop transactions, full-inventory drop pickup blocking/recovery, and resource depletion/respawn state.
+
+The debug command console is available in non-release/dev runs with F10 and remains independently smoke-testable. It supports `help`, `give_item`, `teleport`, `set_quest_state`, `set_skill`, `spawn_enemy`, `spawn_drop`, `heal`, `damage`, and `force_weather`.
+
+The debug overlay is available in non-release/dev runs with F9 and remains independently smoke-testable. It shows player/destination tiles, object and blocked-tile counts, active path length, hitpoints, status count, quest counts, camera heading, and a compact tile map for water, blocked tiles, objects, path, destination, and player position.
+
+The state snapshot smoke checks the reusable helper for in-memory capture, restore into an existing state dictionary, JSON-safe export to `.godot_logs`, import, and summary generation for player, inventory, bank, skills, quests, combat, and world state.
 
 The timed action smoke checks that gather/cook/process actions cannot be repeated while their action timers are active, depleted resources stay unavailable until their data-driven respawn time has elapsed, and secondary resource rewards respect deterministic 0% and 100% success chances.
 

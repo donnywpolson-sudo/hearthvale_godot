@@ -5,6 +5,8 @@ const SKILLS_PATH := "res://data/skills.json"
 const RECIPES_PATH := "res://data/recipes.json"
 const QUESTS_PATH := "res://data/quests.json"
 const INVENTORY_SLOT_LIMIT := 28
+const InvariantChecker = preload("res://scripts/invariant_checker.gd")
+const StateSnapshot = preload("res://scripts/state_snapshot.gd")
 const REQUIRED_TOOLS := {
 	"woodcutting": ["bronze_axe", "woodcutting axe"],
 	"mining": ["bronze_pickaxe", "pickaxe"],
@@ -17,6 +19,7 @@ const PROCESSING_SKILLS := {
 	"herbalism": "herbalism",
 }
 const DEFAULT_ACTION_SECONDS := 1.0
+const BUFF_BONUS_KEYS := ["attack_bonus", "strength_bonus", "defence_bonus", "ranged_bonus", "magic_bonus", "action_speed_bonus"]
 
 var state := {}
 var world: Node
@@ -49,6 +52,8 @@ func _connect_hud_requests() -> void:
 	_connect_hud_signal("shop_buy_requested", "_handle_shop_buy_requested")
 	_connect_hud_signal("shop_sell_requested", "_handle_shop_sell_requested")
 	_connect_hud_signal("dialogue_action_requested", "_handle_dialogue_action_requested")
+	_connect_hud_signal("inventory_item_action_requested", "_handle_inventory_item_action_requested")
+	_connect_hud_signal("equipment_item_action_requested", "_handle_equipment_item_action_requested")
 
 
 func _connect_hud_signal(signal_name: String, method_name: String) -> void:
@@ -93,7 +98,9 @@ func _examine_object(object_data: Dictionary) -> void:
 		"resource":
 			var skill_name := _skill_name(str(object_data.get("skill_id", "")))
 			var required_level := int(object_data.get("required_level", 1))
-			_feedback("%s: %s resource, level %d." % [label, skill_name, required_level])
+			var item_id := str(object_data.get("item_reward", ""))
+			var xp := int(object_data.get("xp_reward", 0))
+			_feedback("%s: %s resource, level %d; gives %s and %d XP." % [label, skill_name, required_level, _item_name(item_id), xp])
 		"mob":
 			_feedback("%s: combat level %d." % [label, int(object_data.get("level", 1))])
 		"ground_item":
@@ -201,6 +208,12 @@ func run_progression_regression_smoke() -> bool:
 	if not _assert_core_progression_path_for_smoke():
 		push_error("Progression smoke failed: core progression path")
 		return false
+	if not _assert_inventory_item_actions_for_smoke():
+		push_error("Progression smoke failed: inventory item actions")
+		return false
+	if not _assert_inventory_drop_for_smoke():
+		push_error("Progression smoke failed: inventory drop")
+		return false
 	if not _assert_bank_round_trip_for_smoke():
 		push_error("Progression smoke failed: bank round trip")
 		return false
@@ -229,6 +242,49 @@ func run_progression_regression_smoke() -> bool:
 		push_error("Progression smoke failed: equipment and drops")
 		return false
 	return true
+
+
+func run_golden_scenarios_smoke() -> bool:
+	_ensure_state_shape()
+	if not _assert_golden_core_loop_for_smoke():
+		push_error("Golden scenario smoke failed: core loop")
+		return false
+	if not _assert_golden_inventory_pressure_for_smoke():
+		push_error("Golden scenario smoke failed: inventory pressure")
+		return false
+	if not _assert_golden_quest_reward_flow_for_smoke():
+		push_error("Golden scenario smoke failed: quest reward flow")
+		return false
+	if not _assert_golden_combat_loot_recovery_for_smoke():
+		push_error("Golden scenario smoke failed: combat loot recovery")
+		return false
+	if not _assert_golden_bank_shop_round_trip_for_smoke():
+		push_error("Golden scenario smoke failed: bank/shop round trip")
+		return false
+	return _assert_state_invariants_for_smoke("golden scenarios final state")
+
+
+func run_save_load_torture_smoke(store: Node, username: String) -> bool:
+	_ensure_state_shape()
+	if store == null:
+		push_error("Save/load torture smoke failed: missing StateStore")
+		return false
+	if not _assert_torture_combat_status_for_smoke(store, "%s_combat" % username):
+		push_error("Save/load torture smoke failed: combat/status")
+		return false
+	if not _assert_torture_quest_reward_for_smoke(store, "%s_quest" % username):
+		push_error("Save/load torture smoke failed: quest reward blocking")
+		return false
+	if not _assert_torture_bank_shop_for_smoke(store, "%s_bank_shop" % username):
+		push_error("Save/load torture smoke failed: bank/shop")
+		return false
+	if not _assert_torture_full_inventory_for_smoke(store, "%s_full_inventory" % username):
+		push_error("Save/load torture smoke failed: full inventory")
+		return false
+	if not _assert_torture_resource_respawn_for_smoke(store, "%s_resource" % username):
+		push_error("Save/load torture smoke failed: resource respawn")
+		return false
+	return _assert_state_invariants_for_smoke("save/load torture final state")
 
 
 func run_timed_action_smoke() -> bool:
@@ -367,19 +423,347 @@ func run_combat_depth_smoke() -> bool:
 		return false
 	if _combat_is_poisoned() or _inventory_count("mire_tonic") != 0:
 		return false
+	if _action_speed_bonus() <= 0.0:
+		return false
 
 	state["combat"] = {"current_hitpoints": _skill_level("hitpoints"), "mobs": {}, "ground_items": [], "status_effects": {}}
 	state["combat_training_style"] = "strength"
+	state["inventory"] = {"bronze_sword": 1, "bronze_shield": 1}
+	if not _equip_item("bronze_sword") or not _equip_item("bronze_shield"):
+		return false
 	var strength_before := _skill_xp("strength")
 	var attack_before := _skill_xp("attack")
+	var hitpoints_before := int(_combat_state().get("current_hitpoints", 0))
 	_attack_mob({
 		"id": "training_style_dummy",
 		"label": "Training dummy",
-		"level": 1,
-		"hitpoints": 2,
-		"passive": true,
+		"level": 6,
+		"hitpoints": 3,
 	})
-	return _skill_xp("strength") > strength_before and _skill_xp("attack") == attack_before
+	return _skill_xp("strength") > strength_before and _skill_xp("attack") == attack_before and int(_combat_state().get("current_hitpoints", 0)) == hitpoints_before - 1
+
+
+func _assert_golden_core_loop_for_smoke() -> bool:
+	_reset_for_golden_scenario({
+		"inventory": {"bronze_axe": 1, "raw_shrimp": 1},
+		"bank": {},
+		"skills": {},
+		"world": {"resource_nodes": {}, "action_clock_seconds": 0.0, "action_cooldowns": {}},
+	})
+	_gather_resource({
+		"id": "golden_tree",
+		"label": "Golden Tree",
+		"skill_id": "woodcutting",
+		"required_level": 1,
+		"xp_reward": 28,
+		"item_reward": "logs",
+		"quantity_reward": 1,
+	})
+	if _inventory_count("logs") != 1 or _skill_xp("woodcutting") <= 0:
+		return false
+	_process_recipe_type("carpentry")
+	if _inventory_count("plain_plank") != 1 or _inventory_count("logs") != 0 or _skill_xp("carpentry") <= 0:
+		return false
+	_process_cooking()
+	if _inventory_count("cooked_shrimp") != 1 or _skill_xp("cooking") <= 0:
+		return false
+	_combat_set_hitpoints(_skill_level("hitpoints") - 2)
+	if not _use_item("cooked_shrimp"):
+		return false
+	if int(_combat_state().get("current_hitpoints", 0)) != _skill_level("hitpoints"):
+		return false
+	_open_shop({})
+	_handle_shop_sell_requested("plain_plank", 1)
+	return _inventory_count("plain_plank") == 0 and _inventory_count("coins") > 0 and _assert_state_invariants_for_smoke("golden core loop")
+
+
+func _assert_golden_inventory_pressure_for_smoke() -> bool:
+	_reset_for_golden_scenario({
+		"inventory": {"coins": 1, "bronze_sword": INVENTORY_SLOT_LIMIT - 1},
+		"bank": {},
+	})
+	if not _add_inventory_item("coins", 5):
+		return false
+	if _add_inventory_item("bones", 1):
+		return false
+	if _inventory_count("coins") != 6 or _inventory_count("bones") != 0:
+		return false
+	return _assert_state_invariants_for_smoke("golden inventory pressure")
+
+
+func _assert_golden_quest_reward_flow_for_smoke() -> bool:
+	_reset_for_golden_scenario({
+		"inventory": {"bronze_sword": INVENTORY_SLOT_LIMIT},
+		"bank": {},
+		"skills": {},
+		"quest_state": {"active_quest_id": "workshop_order", "quests": {}},
+		"quest_progress": {},
+	})
+	var keeper := {"quest_id": "workshop_order", "label": "Workshop Keeper"}
+	_talk_to_npc(keeper)
+	_handle_dialogue_action_requested(keeper)
+	if not _quest_started("workshop_order"):
+		return false
+	for flag in ["crafted_plank", "crafted_charcoal", "crafted_splinters"]:
+		_record_quest_flag(flag)
+	_handle_dialogue_action_requested(keeper)
+	if _quest_completed("workshop_order") or _inventory_count("coins") != 0:
+		return false
+	state["inventory"] = {"bronze_sword": INVENTORY_SLOT_LIMIT - 1}
+	_handle_dialogue_action_requested(keeper)
+	return _quest_completed("workshop_order") and _inventory_count("coins") == 24 and _skill_xp("carpentry") >= 24 and _assert_state_invariants_for_smoke("golden quest reward flow")
+
+
+func _assert_golden_combat_loot_recovery_for_smoke() -> bool:
+	_reset_for_golden_scenario({
+		"inventory": {"cooked_shrimp": 1, "bronze_sword": 1},
+		"combat": {"current_hitpoints": 8, "mobs": {}, "ground_items": [], "status_effects": {}},
+		"skills": {},
+	})
+	if not _use_item("cooked_shrimp"):
+		return false
+	if int(_combat_state().get("current_hitpoints", 0)) != _skill_level("hitpoints"):
+		return false
+	_attack_mob({
+		"id": "golden_rat",
+		"label": "Golden Rat",
+		"level": 1,
+		"hitpoints": 1,
+		"passive": true,
+		"drops": [{"item_id": "coins", "quantity": 9}],
+		"tile": Vector2i(17, 16),
+	})
+	var drops = _combat_state().get("ground_items", [])
+	if not (drops is Array) or drops.is_empty():
+		return false
+	_pick_up_drop(drops[0])
+	drops = _combat_state().get("ground_items", [])
+	return _inventory_count("coins") == 9 and drops is Array and drops.is_empty() and _skill_xp("attack") > 0 and _assert_state_invariants_for_smoke("golden combat loot recovery")
+
+
+func _assert_golden_bank_shop_round_trip_for_smoke() -> bool:
+	_reset_for_golden_scenario({
+		"inventory": {"coins": 50, "logs": 2},
+		"bank": {},
+	})
+	_open_bank()
+	_handle_bank_deposit_requested("logs", 0)
+	if _inventory_count("logs") != 0 or int(_bank().get("logs", 0)) != 2:
+		return false
+	_handle_bank_withdraw_requested("logs", 1)
+	if _inventory_count("logs") != 1 or int(_bank().get("logs", 0)) != 1:
+		return false
+	_open_shop({"name": "Golden Store", "stock": [{"item_id": "trail_ration", "price": 3}]})
+	_handle_shop_buy_requested("trail_ration", 3)
+	if _inventory_count("trail_ration") != 1 or _inventory_count("coins") != 47:
+		return false
+	_handle_shop_sell_requested("trail_ration", 1)
+	return _inventory_count("trail_ration") == 0 and _inventory_count("coins") > 47 and _assert_state_invariants_for_smoke("golden bank/shop round trip")
+
+
+func _assert_torture_combat_status_for_smoke(store: Node, username: String) -> bool:
+	_reset_for_golden_scenario({
+		"inventory": {"mire_tonic": 1},
+		"combat": {"current_hitpoints": 10, "mobs": {}, "ground_items": [], "status_effects": {}},
+		"skills": {},
+	})
+	var venom_mob := {
+		"id": "torture_stinger",
+		"label": "Torture Stinger",
+		"level": 3,
+		"hitpoints": 5,
+		"poison_chance": 1.0,
+		"poison_damage": 1,
+		"poison_rounds": 2,
+	}
+	_attack_mob(venom_mob)
+	if not _combat_is_poisoned():
+		return false
+	if not _assert_save_load_round_trip_for_smoke(store, username, "combat poison"):
+		return false
+	var hitpoints_after_load := int(_combat_state().get("current_hitpoints", 0))
+	_attack_mob(venom_mob)
+	if int(_combat_state().get("current_hitpoints", 0)) >= hitpoints_after_load:
+		return false
+	if not _use_item("mire_tonic"):
+		return false
+	if _combat_is_poisoned() or _inventory_count("mire_tonic") != 0:
+		return false
+	return _assert_save_load_round_trip_for_smoke(store, username, "combat cleanse")
+
+
+func _assert_torture_quest_reward_for_smoke(store: Node, username: String) -> bool:
+	_reset_for_golden_scenario({
+		"inventory": {"bronze_sword": INVENTORY_SLOT_LIMIT},
+		"bank": {},
+		"skills": {},
+		"quest_state": {"active_quest_id": "workshop_order", "quests": {}},
+		"quest_progress": {},
+	})
+	var keeper := {"quest_id": "workshop_order", "label": "Workshop Keeper"}
+	_talk_to_npc(keeper)
+	_handle_dialogue_action_requested(keeper)
+	for flag in ["crafted_plank", "crafted_charcoal", "crafted_splinters"]:
+		_record_quest_flag(flag)
+	_handle_dialogue_action_requested(keeper)
+	if _quest_completed("workshop_order") or _inventory_count("coins") != 0:
+		return false
+	if not _assert_save_load_round_trip_for_smoke(store, username, "quest blocked"):
+		return false
+	state["inventory"] = {"bronze_sword": INVENTORY_SLOT_LIMIT - 1}
+	_handle_dialogue_action_requested(keeper)
+	if not _quest_completed("workshop_order") or _inventory_count("coins") != 24:
+		return false
+	return _assert_save_load_round_trip_for_smoke(store, username, "quest complete")
+
+
+func _assert_torture_bank_shop_for_smoke(store: Node, username: String) -> bool:
+	_reset_for_golden_scenario({
+		"inventory": {"coins": 50, "logs": 2},
+		"bank": {},
+	})
+	_open_bank()
+	_handle_bank_deposit_requested("logs", 0)
+	if _inventory_count("logs") != 0 or int(_bank().get("logs", 0)) != 2:
+		return false
+	if not _assert_save_load_round_trip_for_smoke(store, username, "bank deposit"):
+		return false
+	_handle_bank_withdraw_requested("logs", 1)
+	_open_shop({"name": "Torture Store", "stock": [{"item_id": "trail_ration", "price": 3}]})
+	_handle_shop_buy_requested("trail_ration", 3)
+	if _inventory_count("trail_ration") != 1 or _inventory_count("coins") != 47:
+		return false
+	if not _assert_save_load_round_trip_for_smoke(store, username, "shop buy"):
+		return false
+	_handle_shop_sell_requested("trail_ration", 1)
+	return _inventory_count("trail_ration") == 0 and _inventory_count("coins") > 47 and _assert_save_load_round_trip_for_smoke(store, username, "shop sell")
+
+
+func _assert_torture_full_inventory_for_smoke(store: Node, username: String) -> bool:
+	_reset_for_golden_scenario({
+		"inventory": {"bronze_sword": INVENTORY_SLOT_LIMIT},
+		"combat": {"current_hitpoints": 10, "mobs": {}, "ground_items": [], "status_effects": {}},
+	})
+	var blocked_drop := {
+		"object_id": "torture_bones_drop",
+		"item_id": "bones",
+		"quantity": 1,
+		"type": "ground_item",
+		"tile": [15, 15],
+	}
+	_combat_state()["ground_items"] = [blocked_drop.duplicate(true)]
+	_pick_up_drop(blocked_drop)
+	var drops = _combat_state().get("ground_items", [])
+	if _inventory_count("bones") != 0 or not (drops is Array) or drops.size() != 1:
+		return false
+	if not _assert_save_load_round_trip_for_smoke(store, username, "full inventory blocked drop"):
+		return false
+	state["inventory"] = {"bronze_sword": INVENTORY_SLOT_LIMIT - 1}
+	drops = _combat_state().get("ground_items", [])
+	if not (drops is Array) or drops.is_empty():
+		return false
+	_pick_up_drop(drops[0])
+	drops = _combat_state().get("ground_items", [])
+	return _inventory_count("bones") == 1 and drops is Array and drops.is_empty() and _assert_save_load_round_trip_for_smoke(store, username, "drop pickup recovery")
+
+
+func _assert_torture_resource_respawn_for_smoke(store: Node, username: String) -> bool:
+	_reset_for_golden_scenario({
+		"inventory": {"bronze_axe": 1},
+		"world": {"resource_nodes": {}, "action_clock_seconds": 0.0, "action_cooldowns": {}},
+		"skills": {},
+	})
+	var tree := {
+		"id": "torture_tree",
+		"label": "Torture Tree",
+		"skill_id": "woodcutting",
+		"required_level": 1,
+		"xp_reward": 28,
+		"item_reward": "logs",
+		"quantity_reward": 1,
+		"base_gather_seconds": 1.0,
+		"respawn_seconds": 5.0,
+	}
+	_gather_resource(tree)
+	if _inventory_count("logs") != 1 or not _resource_is_depleted("torture_tree"):
+		return false
+	if not _assert_save_load_round_trip_for_smoke(store, username, "resource depleted"):
+		return false
+	_advance_action_clock(5.1)
+	_gather_resource(tree)
+	if _inventory_count("logs") != 2 or not _resource_is_depleted("torture_tree"):
+		return false
+	return _assert_save_load_round_trip_for_smoke(store, username, "resource respawn")
+
+
+func _assert_save_load_round_trip_for_smoke(store: Node, username: String, label: String) -> bool:
+	state["username"] = username
+	var expected := state.duplicate(true)
+	if not store.save_state(username, state):
+		push_error("Save/load torture smoke failed: %s save_state returned false" % label)
+		return false
+	var loaded: Dictionary = store.load_state(username)
+	if loaded.is_empty():
+		push_error("Save/load torture smoke failed: %s load_state returned empty" % label)
+		return false
+	for key in ["inventory", "bank", "equipment", "skills", "combat", "world", "quest_state", "quest_progress", "combat_training_style"]:
+		if _normalize_for_smoke_compare(loaded.get(key, {})) != _normalize_for_smoke_compare(expected.get(key, {})):
+			push_error("Save/load torture smoke failed: %s %s mismatch" % [label, key])
+			return false
+	if str(loaded.get("username", "")) != username:
+		push_error("Save/load torture smoke failed: %s username mismatch" % label)
+		return false
+	state.clear()
+	for key in loaded.keys():
+		state[key] = loaded[key]
+	_ensure_state_shape()
+	return _assert_state_invariants_for_smoke("save/load torture %s" % label)
+
+
+func _normalize_for_smoke_compare(value):
+	if value is Dictionary:
+		var clean := {}
+		for key in value.keys():
+			clean[str(key)] = _normalize_for_smoke_compare(value[key])
+		return clean
+	if value is Array:
+		var clean_array := []
+		for item in value:
+			clean_array.append(_normalize_for_smoke_compare(item))
+		return clean_array
+	if value is float and is_equal_approx(value, round(value)):
+		return int(round(value))
+	return value
+
+
+func _reset_for_golden_scenario(overrides: Dictionary) -> void:
+	state.clear()
+	state["username"] = "codex_golden_scenarios_smoke"
+	state["inventory"] = {}
+	state["bank"] = {}
+	state["equipment"] = {}
+	state["skills"] = {}
+	state["combat_training_style"] = "attack"
+	state["combat"] = {"current_hitpoints": 10, "mobs": {}, "ground_items": [], "status_effects": {}}
+	state["world"] = {"resource_nodes": {}, "action_clock_seconds": 0.0, "action_cooldowns": {}}
+	state["quest_state"] = {"active_quest_id": "starter_path", "quests": {}}
+	state["quest_progress"] = {}
+	state["player"] = {"tile": [15, 15], "position": [15.5, 15.5]}
+	for key in overrides.keys():
+		state[key] = overrides[key].duplicate(true) if overrides[key] is Dictionary or overrides[key] is Array else overrides[key]
+	_ensure_state_shape()
+
+
+func _assert_state_invariants_for_smoke(label: String) -> bool:
+	var invariant_issues: Array = InvariantChecker.check_state(state, items_data, {
+		"inventory_slot_limit": INVENTORY_SLOT_LIMIT,
+	})
+	for issue in invariant_issues:
+		if issue is Dictionary:
+			push_error("%s invariant failed: %s" % [label, str(issue.get("summary", "state invariant failed"))])
+		else:
+			push_error("%s invariant failed: %s" % [label, str(issue)])
+	return invariant_issues.is_empty()
 
 
 func _assert_capacity_edges_for_smoke() -> bool:
@@ -466,6 +850,69 @@ func _assert_core_progression_path_for_smoke() -> bool:
 	_add_inventory_item("raw_shrimp", 1)
 	_process_cooking()
 	return _inventory_count("cooked_shrimp") == 1 and _skill_xp("carpentry") > 0 and _skill_xp("smithing") > 0 and _skill_xp("cooking") > 0
+
+
+func _assert_inventory_item_actions_for_smoke() -> bool:
+	var snapshot := state.duplicate(true)
+	var passed := true
+	state["inventory"] = {"cooked_shrimp": 1, "bronze_shield": 1, "bronze_sword": 1}
+	state["equipment"] = {}
+	state["skills"] = {
+		"attack": {"xp": 0, "level": 1},
+		"defence": {"xp": 0, "level": 1},
+		"hitpoints": {"xp": 0, "level": 10},
+	}
+	state["combat"] = {"current_hitpoints": 8, "mobs": {}, "ground_items": [], "status_effects": {}}
+	_handle_inventory_item_action_requested("cooked_shrimp", "use")
+	if _inventory_count("cooked_shrimp") != 0 or int(_combat_state().get("current_hitpoints", 0)) != 10:
+		passed = false
+	if passed:
+		_handle_inventory_item_action_requested("bronze_shield", "equip")
+		passed = str(_equipment().get("shield", "")) == "bronze_shield" and _inventory_count("bronze_shield") == 0
+	if passed:
+		_handle_inventory_item_action_requested("bronze_sword", "equip")
+		passed = str(_equipment().get("weapon", "")) == "bronze_sword" and _inventory_count("bronze_sword") == 0
+	if passed:
+		_handle_equipment_item_action_requested("weapon", "unequip")
+		passed = str(_equipment().get("weapon", "")) == "" and _inventory_count("bronze_sword") == 1
+	if passed:
+		_handle_inventory_item_action_requested("bronze_sword", "equip")
+		passed = str(_equipment().get("weapon", "")) == "bronze_sword" and _inventory_count("bronze_sword") == 0
+	if passed:
+		state["inventory"] = {"iron_sword": INVENTORY_SLOT_LIMIT}
+		_handle_equipment_item_action_requested("weapon", "unequip")
+		passed = str(_equipment().get("weapon", "")) == "bronze_sword" and _inventory_count("bronze_sword") == 0
+	if passed:
+		state["inventory"]["iron_sword"] = 1
+		_handle_inventory_item_action_requested("iron_sword", "equip")
+		passed = str(_equipment().get("weapon", "")) == "bronze_sword" and _inventory_count("iron_sword") == 1
+	_restore_state_snapshot(snapshot)
+	return passed
+
+
+func _assert_inventory_drop_for_smoke() -> bool:
+	var snapshot := state.duplicate(true)
+	var passed := true
+	state["inventory"] = {"logs": 2}
+	state["player"] = {"tile": [15, 15], "position": [15.5, 15.5]}
+	state["combat"] = {"current_hitpoints": 10, "mobs": {}, "ground_items": [], "status_effects": {}}
+	_handle_inventory_item_action_requested("logs", "drop")
+	var drops = _combat_state().get("ground_items", [])
+	if _inventory_count("logs") != 1 or not (drops is Array) or drops.is_empty():
+		passed = false
+	if passed:
+		var drop = drops[0]
+		passed = drop is Dictionary and str(drop.get("item_id", "")) == "logs" and int(drop.get("quantity", 0)) == 1
+	if passed:
+		_pick_up_drop(drops[0])
+		drops = _combat_state().get("ground_items", [])
+		passed = _inventory_count("logs") == 2 and drops is Array and drops.is_empty()
+	_restore_state_snapshot(snapshot)
+	return passed
+
+
+func _restore_state_snapshot(snapshot: Dictionary) -> void:
+	StateSnapshot.restore_into(state, snapshot)
 
 
 func _assert_bank_round_trip_for_smoke() -> bool:
@@ -641,7 +1088,7 @@ func _gather_resource(object_data: Dictionary) -> void:
 		_feedback("You need a %s" % str(tool[1]))
 		return
 	if _skill_level(skill_id) < required_level:
-		_feedback("You need %s level %d" % [_skill_name(skill_id), required_level])
+		_feedback("You need %s level %d for %s; it gives %s and %d XP" % [_skill_name(skill_id), required_level, label, _item_name(item_id), xp])
 		return
 	if not _inventory_can_transact({}, {item_id: quantity}):
 		_feedback("Inventory is full")
@@ -732,10 +1179,10 @@ func _process_recipe_type(action_type: String) -> void:
 			continue
 		var skill_id := str(PROCESSING_SKILLS.get(action_type, action_type))
 		var required_level := int(recipe.get("required_level", 1))
-		if _skill_level(skill_id) < required_level:
-			_feedback("You need %s level %d" % [_skill_name(skill_id), required_level])
-			return
 		var output_item := str(recipe.get("output_item_id", ""))
+		if _skill_level(skill_id) < required_level:
+			_feedback("You need %s level %d to make %s" % [_skill_name(skill_id), required_level, str(recipe.get("display_name", recipe.get("recipe_id", output_item)))])
+			return
 		var output_quantity := int(recipe.get("output_quantity", 1))
 		if not _inventory_can_transact(recipe.get("inputs", {}), {output_item: output_quantity}):
 			_feedback("Inventory is full")
@@ -790,11 +1237,11 @@ func _attack_mob(object_data: Dictionary) -> void:
 	var style := str(state.get("combat_training_style", "attack"))
 	if style not in ["attack", "strength", "defence", "ranged", "magic"]:
 		style = "attack"
-	var damage: int = max(1, 1 + int((_skill_level(_damage_skill(style)) - 1) / 10))
+	var damage := _combat_player_damage(style)
 	var remaining: int = max(0, int(mob_state.get("hitpoints", max_hp)) - damage)
 	_add_xp(style, damage * 4)
 	_add_xp("hitpoints", damage)
-	var enemy_damage: int = 0 if bool(object_data.get("passive", false)) else max(0, int(level / 3))
+	var enemy_damage := _combat_enemy_damage(level, style, object_data)
 	if enemy_damage > 0:
 		_combat_set_hitpoints(max(0, int(combat.get("current_hitpoints", 10)) - enemy_damage))
 		_add_xp("defence", enemy_damage * 4)
@@ -866,6 +1313,71 @@ func _spawn_drops(object_data: Dictionary) -> void:
 	combat["ground_items"] = ground_items
 
 
+func _combat_player_damage(style: String) -> int:
+	var damage_skill := _damage_skill(style)
+	var base_damage := 1 + int((_skill_level(damage_skill) - 1) / 10)
+	var weapon = items_data.get(str(_equipment().get("weapon", "")), {})
+	var attack_bonus := _combat_bonus_from_definition(weapon, "attack_bonus") + _buff_bonus("attack_bonus")
+	var strength_bonus := _combat_bonus_from_definition(weapon, "strength_bonus") + _buff_bonus("strength_bonus")
+	var ranged_bonus := _combat_bonus_from_definition(weapon, "ranged_bonus") + _buff_bonus("ranged_bonus")
+	var magic_bonus := _combat_bonus_from_definition(weapon, "magic_bonus") + _buff_bonus("magic_bonus")
+	match style:
+		"ranged":
+			return max(1, base_damage + int(ranged_bonus / 2))
+		"magic":
+			return max(1, base_damage + int(magic_bonus / 2))
+		"strength":
+			return max(1, base_damage + int((attack_bonus + strength_bonus) / 2))
+		"defence":
+			return max(1, base_damage + int(attack_bonus / 2))
+		_:
+			return max(1, base_damage + int((attack_bonus + strength_bonus) / 2))
+
+
+func _combat_enemy_damage(level: int, style: String, object_data: Dictionary) -> int:
+	if bool(object_data.get("passive", false)):
+		return 0
+	var shield = items_data.get(str(_equipment().get("shield", "")), {})
+	var defence_bonus := _combat_bonus_from_definition(shield, "defence_bonus") + _buff_bonus("defence_bonus")
+	var style_relief := 1 if style in ["ranged", "magic"] else 0
+	return max(0, int(level / 3) - defence_bonus - style_relief)
+
+
+func _combat_bonus_from_definition(definition, key: String) -> int:
+	if definition is Dictionary:
+		return int(definition.get(key, 0))
+	return 0
+
+
+func _drop_inventory_item(item_id: String, quantity: int = 1) -> bool:
+	if item_id.is_empty() or quantity <= 0 or _inventory_count(item_id) <= 0:
+		_feedback("Nothing to drop")
+		return false
+	var removed := _remove_inventory_item(item_id, min(quantity, _inventory_count(item_id)))
+	if removed <= 0:
+		_feedback("Nothing to drop")
+		return false
+	var tile := _player_tile()
+	ground_drop_counter += 1
+	var item := {
+		"object_id": "ground_item_%04d" % ground_drop_counter,
+		"item_id": item_id,
+		"quantity": removed,
+		"tile": [tile.x, tile.y],
+		"type": "ground_item",
+	}
+	var combat := _combat_state()
+	var ground_items = combat.get("ground_items", [])
+	if not (ground_items is Array):
+		ground_items = []
+	ground_items.append(item)
+	combat["ground_items"] = ground_items
+	if world != null and world.has_method("add_ground_drop"):
+		world.add_ground_drop(tile, item)
+	_feedback("Dropped %d %s" % [removed, _item_name(item_id)])
+	return true
+
+
 func _open_bank() -> void:
 	if hud != null and hud.has_method("show_bank_panel"):
 		hud.show_bank_panel()
@@ -910,6 +1422,41 @@ func _handle_shop_sell_requested(item_id: String, quantity: int) -> void:
 func _handle_dialogue_action_requested(npc_data: Dictionary) -> void:
 	_advance_npc_quest(npc_data)
 	_show_npc_dialogue(npc_data)
+	_refresh_ui()
+
+
+func _handle_inventory_item_action_requested(item_id: String, action: String) -> void:
+	match action:
+		"use":
+			_use_item(item_id)
+		"equip":
+			_equip_item(item_id)
+		"examine":
+			_examine_item(item_id)
+		"drop":
+			_drop_inventory_item(item_id, 1)
+		_:
+			_feedback("Nothing happens")
+	if hud != null and hud.has_method("show_item_action_panel") and _inventory_count(item_id) > 0:
+		hud.show_item_action_panel(item_id)
+	elif hud != null and hud.has_method("hide_interaction_panel"):
+		hud.hide_interaction_panel()
+	_refresh_ui()
+
+
+func _handle_equipment_item_action_requested(slot: String, action: String) -> void:
+	var item_id := str(_equipment().get(slot, ""))
+	match action:
+		"unequip":
+			_unequip_item(slot)
+		"examine":
+			_examine_item(item_id)
+		_:
+			_feedback("Nothing happens")
+	if hud != null and hud.has_method("show_equipment_action_panel") and not str(_equipment().get(slot, "")).is_empty():
+		hud.show_equipment_action_panel(slot)
+	elif hud != null and hud.has_method("hide_interaction_panel"):
+		hud.hide_interaction_panel()
 	_refresh_ui()
 
 
@@ -977,6 +1524,9 @@ func _sell_shop_item(item_id: String, requested_quantity: int) -> bool:
 	if item_id.is_empty() or item_id == "coins" or _inventory_count(item_id) <= 0:
 		_feedback("Nothing to sell")
 		return false
+	if _is_protected_gathering_tool(item_id):
+		_feedback("Keep your last %s for gathering" % _item_name(item_id))
+		return false
 	var price := _sell_price(item_id)
 	if price <= 0:
 		_feedback("%s cannot be sold" % _item_name(item_id))
@@ -1006,7 +1556,8 @@ func _use_item(item_id: String) -> bool:
 		return false
 	var heal_amount := int(definition.get("heal_amount", 0))
 	var cleanses_poison := bool(definition.get("cleanses_poison", false))
-	if heal_amount <= 0 and not cleanses_poison:
+	var has_buff := _definition_has_buff(definition)
+	if heal_amount <= 0 and not cleanses_poison and not has_buff:
 		_feedback("Nothing happens")
 		return false
 	var combat := _combat_state()
@@ -1014,7 +1565,7 @@ func _use_item(item_id: String) -> bool:
 	var current_hitpoints := int(combat.get("current_hitpoints", max_hitpoints))
 	var can_heal := heal_amount > 0 and current_hitpoints < max_hitpoints
 	var can_cleanse := cleanses_poison and _combat_is_poisoned()
-	if not can_heal and not can_cleanse:
+	if not can_heal and not can_cleanse and not has_buff:
 		_feedback("Already at full health")
 		return false
 	var healed: int = min(heal_amount, max_hitpoints - current_hitpoints) if can_heal else 0
@@ -1023,14 +1574,70 @@ func _use_item(item_id: String) -> bool:
 		_combat_set_hitpoints(current_hitpoints + healed)
 	if can_cleanse:
 		_clear_combat_poison()
+	var buff_message := ""
+	if has_buff:
+		buff_message = _apply_item_buff(item_id, definition)
 	_record_quest_flag("ate_food")
 	var message := "Used %s" % _item_name(item_id)
 	if healed > 0:
 		message = "%s: healed %d HP" % [message, healed]
 	if can_cleanse:
 		message = "%s; poison cleared" % message
+	if not buff_message.is_empty():
+		message = "%s; %s" % [message, buff_message]
 	_feedback(message)
 	return true
+
+
+func _examine_item(item_id: String) -> void:
+	var definition = items_data.get(item_id, {})
+	if not (definition is Dictionary):
+		_feedback("%s: nothing unusual." % _item_name(item_id))
+		return
+	var category := str(definition.get("category", "item"))
+	var message := "%s: %s item" % [_item_name(item_id), category]
+	if definition.has("sell_price"):
+		message = "%s, sells for %d coins" % [message, int(definition["sell_price"])]
+	if definition.has("equip_slot"):
+		message = "%s, equips to %s" % [message, _display_label(str(definition["equip_slot"]))]
+	if definition.has("heal_amount"):
+		message = "%s, heals %d HP" % [message, int(definition["heal_amount"])]
+	var effect_text := _item_buff_summary(definition)
+	if not effect_text.is_empty():
+		message = "%s, %s" % [message, effect_text]
+	_feedback("%s." % message)
+
+
+func _definition_has_buff(definition: Dictionary) -> bool:
+	for key in BUFF_BONUS_KEYS:
+		if float(definition.get(key, 0.0)) > 0.0:
+			return true
+	return false
+
+
+func _apply_item_buff(item_id: String, definition: Dictionary) -> String:
+	var duration := float(definition.get("effect_duration_seconds", 90.0))
+	var buff := {"ends_at": _action_clock_seconds() + max(1.0, duration)}
+	for key in BUFF_BONUS_KEYS:
+		var value := float(definition.get(key, 0.0))
+		if value > 0.0:
+			buff[key] = value
+	var buffs := _combat_buffs()
+	buffs[item_id] = buff
+	return "%s for %ds" % [_item_buff_summary(definition), int(duration)]
+
+
+func _item_buff_summary(definition: Dictionary) -> String:
+	var parts: Array[String] = []
+	for key in BUFF_BONUS_KEYS:
+		var value := float(definition.get(key, 0.0))
+		if value <= 0.0:
+			continue
+		if key == "action_speed_bonus":
+			parts.append("%d%% faster actions" % int(round(value * 100.0)))
+		else:
+			parts.append("+%d %s" % [int(value), _display_label(key.replace("_bonus", ""))])
+	return ", ".join(parts)
 
 
 func _talk_to_npc(npc_data: Dictionary) -> void:
@@ -1212,13 +1819,66 @@ func _equip_item(item_id: String) -> bool:
 	if _inventory_count(item_id) <= 0:
 		_feedback("No %s" % _item_name(item_id))
 		return false
-	_remove_inventory_item(item_id, 1)
+	var definition = items_data.get(item_id, {})
+	if not (definition is Dictionary):
+		_feedback("%s cannot be equipped" % _item_name(item_id))
+		return false
+	var slot := str(definition.get("equip_slot", ""))
+	if slot.is_empty():
+		_feedback("%s cannot be equipped" % _item_name(item_id))
+		return false
+	if not _meets_item_skill_requirements(definition):
+		return false
 	var equipment := _equipment()
-	equipment["weapon"] = item_id
-	_record_quest_flag("equipped_weapon")
+	var previous_item := str(equipment.get(slot, ""))
+	var add_back := {}
+	if not previous_item.is_empty():
+		add_back[previous_item] = 1
+	if not _inventory_can_transact({item_id: 1}, add_back):
+		_feedback("Inventory is full")
+		return false
+	_remove_inventory_item(item_id, 1)
+	if not previous_item.is_empty():
+		_add_inventory_item(previous_item, 1)
+	equipment[slot] = item_id
+	if slot == "weapon":
+		_record_quest_flag("equipped_weapon")
 	if item_id in ["training_bow", "training_staff"]:
 		_record_quest_flag("equipped_%s" % item_id)
-	_feedback("Equipped %s" % _item_name(item_id))
+	_feedback("Equipped %s to %s" % [_item_name(item_id), _display_label(slot)])
+	return true
+
+
+func _unequip_item(slot: String) -> bool:
+	if slot.is_empty():
+		_feedback("No equipment slot selected")
+		return false
+	var equipment := _equipment()
+	var item_id := str(equipment.get(slot, ""))
+	if item_id.is_empty():
+		_feedback("No item equipped in %s" % _display_label(slot))
+		return false
+	if not _inventory_can_transact({}, {item_id: 1}):
+		_feedback("Inventory is full")
+		return false
+	equipment.erase(slot)
+	if not _add_inventory_item(item_id, 1):
+		equipment[slot] = item_id
+		_feedback("Inventory is full")
+		return false
+	_feedback("Unequipped %s from %s" % [_item_name(item_id), _display_label(slot)])
+	return true
+
+
+func _meets_item_skill_requirements(definition: Dictionary) -> bool:
+	var requirements = definition.get("required_skills", {})
+	if not (requirements is Dictionary):
+		return true
+	for skill_id in requirements.keys():
+		var required_level := int(requirements[skill_id])
+		if _skill_level(str(skill_id)) < required_level:
+			_feedback("You need %s level %d" % [_skill_name(str(skill_id)), required_level])
+			return false
 	return true
 
 
@@ -1367,9 +2027,16 @@ func _equipment() -> Dictionary:
 func _first_depositable_item() -> String:
 	for item_id in _inventory().keys():
 		var deposit_item_id := str(item_id)
-		if _inventory_count(deposit_item_id) > 0 and deposit_item_id != "coins":
+		if _inventory_count(deposit_item_id) > 0 and deposit_item_id != "coins" and not _is_protected_gathering_tool(deposit_item_id):
 			return deposit_item_id
 	return ""
+
+
+func _is_protected_gathering_tool(item_id: String) -> bool:
+	if _inventory_count(item_id) > 1:
+		return false
+	var definition = items_data.get(item_id, {})
+	return definition is Dictionary and not str(definition.get("tool_for", "")).is_empty()
 
 
 func _buy_price(item_id: String) -> int:
@@ -1539,13 +2206,61 @@ func _combat_state() -> Dictionary:
 	return combat
 
 
+func _player_tile() -> Vector2i:
+	var player_state = state.get("player", {})
+	if player_state is Dictionary:
+		var tile = player_state.get("tile", [15, 15])
+		if tile is Vector2i:
+			return tile
+		if tile is Vector2:
+			return Vector2i(int(tile.x), int(tile.y))
+		if tile is Array and tile.size() >= 2:
+			return Vector2i(int(tile[0]), int(tile[1]))
+	return Vector2i(15, 15)
+
+
 func _combat_status_effects() -> Dictionary:
 	var combat := _combat_state()
 	var status_effects = combat.get("status_effects", {})
 	if not (status_effects is Dictionary):
 		status_effects = {}
-		combat["status_effects"] = status_effects
+	combat["status_effects"] = status_effects
 	return status_effects
+
+
+func _combat_buffs() -> Dictionary:
+	var status_effects := _combat_status_effects()
+	var buffs = status_effects.get("buffs", {})
+	if not (buffs is Dictionary):
+		buffs = {}
+	status_effects["buffs"] = buffs
+	return buffs
+
+
+func _active_combat_buffs() -> Dictionary:
+	var buffs := _combat_buffs()
+	var now := _action_clock_seconds()
+	for item_id in buffs.keys():
+		var buff = buffs[item_id]
+		if not (buff is Dictionary) or float(buff.get("ends_at", 0.0)) <= now:
+			buffs.erase(item_id)
+	return buffs
+
+
+func _buff_bonus(key: String) -> int:
+	var total := 0.0
+	for buff in _active_combat_buffs().values():
+		if buff is Dictionary:
+			total += float(buff.get(key, 0.0))
+	return int(total)
+
+
+func _action_speed_bonus() -> float:
+	var total := 0.0
+	for buff in _active_combat_buffs().values():
+		if buff is Dictionary:
+			total += float(buff.get("action_speed_bonus", 0.0))
+	return clamp(total, 0.0, 0.35)
 
 
 func _combat_is_poisoned() -> bool:
@@ -1711,7 +2426,8 @@ func _action_is_ready(action_key: String) -> bool:
 func _start_action_cooldown(action_key: String, seconds: float) -> void:
 	if action_key.is_empty() or seconds <= 0.0:
 		return
-	_action_cooldowns()[action_key] = _action_clock_seconds() + seconds
+	var adjusted_seconds: float = max(0.25, seconds * (1.0 - _action_speed_bonus()))
+	_action_cooldowns()[action_key] = _action_clock_seconds() + adjusted_seconds
 
 
 func _chance_succeeds(action_key: String, chance: float) -> bool:

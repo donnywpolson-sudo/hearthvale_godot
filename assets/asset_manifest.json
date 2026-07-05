@@ -329,6 +329,7 @@
       "path": "icons/ui/gold.png"
     }
   },
+  "models": {},
   "effects": {
     "spark": {
       "path": "sprites/effects/spark.png"

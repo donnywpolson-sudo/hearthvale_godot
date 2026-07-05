@@ -59,6 +59,9 @@ const MANIFEST_CATEGORIES := {
 	"effects": {"prefix": "sprites/effects/", "extensions": [".png"]},
 	"audio": {"prefix": "audio/", "extensions": [".flac", ".mp3", ".ogg", ".wav"]},
 }
+const OPTIONAL_MANIFEST_CATEGORIES := {
+	"models": {"prefix": "models/", "extensions": [".glb", ".gltf"]},
+}
 const PROTECTED_TERMS := ["runescape", "osrs", "stardew", "runite", "rune"]
 const ISSUE_PRINT_LIMIT := 80
 
@@ -162,8 +165,14 @@ func _validate_items(items: Dictionary, skills: Dictionary) -> void:
 			_issue(source, "'stackable' must be a boolean")
 		if definition.has("buy_price") and not _is_positive_int(definition["buy_price"]):
 			_issue(source, "'buy_price' must be a positive integer")
+		if definition.has("buy_price") and _is_positive_int(definition["buy_price"]) and definition.has("sell_price") and _is_non_negative_int(definition["sell_price"]) and int(definition["buy_price"]) < int(definition["sell_price"]):
+			_issue(source, "'buy_price' must not be below 'sell_price'")
 		if definition.has("heal_amount") and not _is_positive_int(definition["heal_amount"]):
 			_issue(source, "'heal_amount' must be a positive integer")
+		if definition.has("tool_for"):
+			var tool_for := str(definition["tool_for"])
+			if tool_for.is_empty() or not skills.has(tool_for):
+				_issue(source, "unknown tool_for skill '%s'" % tool_for)
 		for bonus_key in ["attack_bonus", "strength_bonus", "defence_bonus", "ranged_bonus", "magic_bonus"]:
 			if definition.has(bonus_key) and not _is_non_negative_int(definition[bonus_key]):
 				_issue(source, "'%s' must be a non-negative integer" % bonus_key)
@@ -273,8 +282,7 @@ func _validate_skills(skills: Dictionary) -> void:
 			_validate_xp_thresholds(definition["xp_thresholds"], source)
 		else:
 			_issue(source, "missing required object 'xp_thresholds'")
-		if definition.has("milestones") and not (definition["milestones"] is Array):
-			_issue(source, "'milestones' must be a list")
+		_validate_milestones(definition.get("milestones", null), source)
 
 
 func _validate_xp_thresholds(thresholds, source: String) -> void:
@@ -283,6 +291,7 @@ func _validate_xp_thresholds(thresholds, source: String) -> void:
 		return
 	if not thresholds.has("1") or int(thresholds.get("1", -1)) != 0:
 		_issue(source, "'xp_thresholds' must include level 1 at 0 XP")
+	var previous_xp := -1
 	for level in range(1, 100):
 		var key := str(level)
 		if not thresholds.has(key):
@@ -290,9 +299,36 @@ func _validate_xp_thresholds(thresholds, source: String) -> void:
 			continue
 		if not _is_non_negative_int(thresholds[key]):
 			_issue(source, "'xp_thresholds.%s' must be a non-negative integer" % key)
+			continue
+		var current_xp := int(thresholds[key])
+		if previous_xp > current_xp:
+			_issue(source, "'xp_thresholds.%s' must not be lower than the previous level threshold" % key)
+		previous_xp = current_xp
+
+
+func _validate_milestones(milestones, source: String) -> void:
+	if not (milestones is Array):
+		_issue(source, "'milestones' must be a list")
+		return
+	var seen_levels := {}
+	for index in range(milestones.size()):
+		var milestone = milestones[index]
+		var milestone_source := "%s.milestones[%d]" % [source, index]
+		if not (milestone is Dictionary):
+			_issue(milestone_source, "milestone must be an object")
+			continue
+		if not _is_level(milestone.get("level", null)):
+			_issue(milestone_source, "'level' must be between 1 and 99")
+		else:
+			var level := int(milestone["level"])
+			if seen_levels.has(level):
+				_issue(milestone_source, "duplicate milestone level %d" % level)
+			seen_levels[level] = true
+		_require_string(milestone, "label", milestone_source)
 
 
 func _validate_recipes(recipes: Dictionary, items: Dictionary, skills: Dictionary) -> void:
+	var seen_global := {}
 	for action_type in PROCESSING_ACTIONS.keys():
 		var skill_id: String = PROCESSING_ACTIONS[action_type]
 		if not skills.has(skill_id):
@@ -319,7 +355,10 @@ func _validate_recipes(recipes: Dictionary, items: Dictionary, skills: Dictionar
 				_issue(source, "'recipe_id' must be a non-empty string")
 			elif seen.has(recipe_id):
 				_issue(source, "duplicate recipe ID '%s'" % recipe_id)
+			elif seen_global.has(recipe_id):
+				_issue(source, "duplicate recipe ID '%s' across recipe groups" % recipe_id)
 			seen[recipe_id] = true
+			seen_global[recipe_id] = true
 			var inputs = recipe.get("inputs", {})
 			if not (inputs is Dictionary) or inputs.is_empty():
 				_issue(source, "'inputs' must be a non-empty object")
@@ -519,6 +558,9 @@ func _validate_shop(raw_shop, items: Dictionary, width: int, height: int, blocke
 	if not (stock is Array):
 		_issue("world.json:shop.stock", "must be a list")
 		return
+	if stock.is_empty():
+		_issue("world.json:shop.stock", "must contain at least one stock item")
+	var seen_stock_items := {}
 	for index in range(stock.size()):
 		var stock_item = stock[index]
 		var source := "world.json:shop.stock[%d]" % index
@@ -528,7 +570,12 @@ func _validate_shop(raw_shop, items: Dictionary, width: int, height: int, blocke
 		var item_id := str(stock_item.get("item_id", ""))
 		if item_id.is_empty() or not items.has(item_id):
 			_issue(source, "unknown item_id '%s'" % item_id)
-		if stock_item.has("price") and not _is_positive_int(stock_item["price"]):
+		elif seen_stock_items.has(item_id):
+			_issue(source, "duplicate shop stock item_id '%s'" % item_id)
+		seen_stock_items[item_id] = true
+		if not stock_item.has("price"):
+			_issue(source, "missing required integer 'price'")
+		elif not _is_positive_int(stock_item["price"]):
 			_issue(source, "'price' must be a positive integer")
 
 
@@ -591,6 +638,9 @@ func _validate_mobs(raw_mobs, items: Dictionary, skills: Dictionary, width: int,
 			_issue(source, "'attack_range' must be a positive integer")
 		if mob.has("passive") and typeof(mob["passive"]) != TYPE_BOOL:
 			_issue(source, "'passive' must be a boolean")
+		var visual_kind := str(mob.get("visual_kind", ""))
+		if visual_kind.is_empty() or not _is_asset_name(visual_kind):
+			_issue(source, "'visual_kind' must be a non-empty visual style key")
 		var poison_keys := ["poison_chance", "poison_damage", "poison_rounds"]
 		var poison_count := 0
 		for key in poison_keys:
@@ -604,7 +654,7 @@ func _validate_mobs(raw_mobs, items: Dictionary, skills: Dictionary, width: int,
 			_issue(source, "'poison_damage' must be a positive integer")
 		if mob.has("poison_rounds") and not _is_positive_int(mob["poison_rounds"]):
 			_issue(source, "'poison_rounds' must be a positive integer")
-		_validate_mob_drops(mob.get("drops", []), items, source)
+		_validate_mob_drops(mob.get("drops", []), items, source, bool(mob.get("passive", false)))
 		var tile: Variant = _tile(mob.get("position", null), "%s.position" % source, width, height)
 		if tile != null:
 			_validate_position(source, tile, blocked_tiles, player_start, resource_positions, world_object_positions, "mob")
@@ -614,10 +664,12 @@ func _validate_mobs(raw_mobs, items: Dictionary, skills: Dictionary, width: int,
 	return positions
 
 
-func _validate_mob_drops(drops, items: Dictionary, source: String) -> void:
+func _validate_mob_drops(drops, items: Dictionary, source: String, passive: bool) -> void:
 	if not (drops is Array):
 		_issue(source, "'drops' must be a list")
 		return
+	if drops.is_empty() and not passive:
+		_issue(source, "non-passive mobs must define at least one drop")
 	for index in range(drops.size()):
 		var drop = drops[index]
 		var drop_source := "%s.drops[%d]" % [source, index]
@@ -662,6 +714,7 @@ func _validate_npcs(raw_npcs, quest_ids: Dictionary, width: int, height: int, bl
 		_issue("world.json:npcs", "must be a list")
 		return
 	var npc_positions := {}
+	var quest_owners := {}
 	for index in range(raw_npcs.size()):
 		var npc = raw_npcs[index]
 		var source := "world.json:npcs[%d]" % index
@@ -678,6 +731,10 @@ func _validate_npcs(raw_npcs, quest_ids: Dictionary, width: int, height: int, bl
 		var quest_id := str(npc.get("quest_id", ""))
 		if not quest_id.is_empty() and not quest_ids.has(quest_id):
 			_issue(source, "unknown quest_id '%s'" % quest_id)
+		elif not quest_id.is_empty() and quest_owners.has(quest_id):
+			_issue(source, "duplicate NPC quest_id '%s' also used by %s" % [quest_id, str(quest_owners[quest_id])])
+		if not quest_id.is_empty():
+			quest_owners[quest_id] = source
 		var tile: Variant = _tile(npc.get("tile", null), "%s.tile" % source, width, height)
 		if tile != null:
 			_validate_position(source, tile, blocked_tiles, player_start, resource_positions, world_object_positions, "npc")
@@ -716,13 +773,16 @@ func _validate_manifest(manifest: Dictionary, items: Dictionary, skills: Diction
 		if not (entries is Dictionary):
 			_issue("asset_manifest.json:%s" % category, "must be an object")
 			continue
-		for asset_id in entries.keys():
-			if not _is_asset_name(str(asset_id)):
-				_issue("asset_manifest.json:%s" % category, "asset names must be lowercase asset keys")
-			var source := "asset_manifest.json:%s:%s" % [category, asset_id]
-			var path := _manifest_entry_path(entries[asset_id], source)
-			if not path.is_empty():
-				_validate_manifest_path(path, source, str(rules["prefix"]), rules["extensions"])
+		_validate_manifest_entries(category, entries, rules)
+	for category in OPTIONAL_MANIFEST_CATEGORIES.keys():
+		if not manifest.has(category):
+			continue
+		var entries = manifest.get(category, null)
+		var rules: Dictionary = OPTIONAL_MANIFEST_CATEGORIES[category]
+		if not (entries is Dictionary):
+			_issue("asset_manifest.json:%s" % category, "must be an object")
+			continue
+		_validate_manifest_entries(category, entries, rules)
 	if manifest.get("audio", {}) is Dictionary:
 		var audio: Dictionary = manifest["audio"]
 		for audio_id in REQUIRED_AUDIO.keys():
@@ -730,6 +790,16 @@ func _validate_manifest(manifest: Dictionary, items: Dictionary, skills: Diction
 				_issue("asset_manifest.json:audio", "missing required audio asset '%s'" % audio_id)
 	_validate_icon_refs(items, manifest, "items")
 	_validate_icon_refs(skills, manifest, "skills")
+
+
+func _validate_manifest_entries(category: String, entries: Dictionary, rules: Dictionary) -> void:
+	for asset_id in entries.keys():
+		if not _is_asset_name(str(asset_id)):
+			_issue("asset_manifest.json:%s" % category, "asset names must be lowercase asset keys")
+		var source := "asset_manifest.json:%s:%s" % [category, asset_id]
+		var path := _manifest_entry_path(entries[asset_id], source)
+		if not path.is_empty():
+			_validate_manifest_path(path, source, str(rules["prefix"]), rules["extensions"])
 
 
 func _manifest_entry_path(entry, source: String) -> String:

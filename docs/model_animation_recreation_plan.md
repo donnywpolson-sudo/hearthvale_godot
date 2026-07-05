@@ -81,5 +81,5 @@ Implemented a low-risk Godot-native recreation slice:
 - No Godot `AnimationPlayer` clips or rigged characters exist yet.
 - Player and NPC silhouettes are still generic generated primitives.
 - Resource and station visuals are distinct but still procedural placeholders.
-- No runtime model manifest exists for future authored 3D assets.
+- `assets/asset_manifest.json` now has an optional `models` hook, but no authored model entries exist yet.
 - No visual screenshot/pixel verification exists for model framing.

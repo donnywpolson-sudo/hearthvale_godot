@@ -3,7 +3,7 @@
     {
       "quest_id": "starter_path",
       "display_name": "Starter path",
-      "start_text": "Guide: Cook food, smelt a bar, smith and equip a weapon, defeat an enemy, use the bank and shop, then return.",
+      "start_text": "Guide: Start the Village Supply Run: cook food, smelt a bar, smith and equip a weapon, defeat an enemy, use the bank and shop, then return.",
       "in_progress_text": "Guide: Keep going. Still needed: {missing_objectives}.",
       "completed_text": "Guide: The village is safer because of you.",
       "completion_text": "Quest complete: Starter path. Reward: 50 coins, +40 Smithing XP.",
@@ -197,7 +197,7 @@
     {
       "quest_id": "first_cast",
       "display_name": "First cast",
-      "start_text": "River Fisher: Catch any fish and bring it back.",
+      "start_text": "River Fisher: Start the River Meal Run with one clean catch, then bring it back.",
       "in_progress_text": "River Fisher: Still needed: {missing_objectives}.",
       "completed_text": "River Fisher: Good catch. The line looks steady now.",
       "completion_text": "Quest complete: First cast. Reward: 25 coins, +15 Fishing XP.",
@@ -218,7 +218,7 @@
     {
       "quest_id": "river_stock",
       "display_name": "River stock",
-      "start_text": "Dock Hand: Catch one fish, bank it, and keep the dock stocked for the next haul.",
+      "start_text": "Dock Hand: Continue the River Meal Run: catch one fish, bank it, and keep the dock stocked for the next haul.",
       "in_progress_text": "Dock Hand: Keep the catch moving. Still needed: {missing_objectives}.",
       "completed_text": "Dock Hand: Good. The dock stays stocked when the catch is packed.",
       "completion_text": "Quest complete: River stock. Reward: 15 coins, +10 Fishing XP.",
@@ -240,7 +240,7 @@
     {
       "quest_id": "field_meal",
       "display_name": "Field meal",
-      "start_text": "Kitchen Runner: Cook the catch, bank the meal, and keep the pantry moving.",
+      "start_text": "Kitchen Runner: Finish the River Meal Run: cook the catch, bank the meal, and keep the pantry moving.",
       "in_progress_text": "Kitchen Runner: The meal is not ready yet. Still needed: {missing_objectives}.",
       "completed_text": "Kitchen Runner: Good. A packed meal is easier to hand out.",
       "completion_text": "Quest complete: Field meal. Reward: 18 coins, +12 Cooking XP.",
@@ -331,7 +331,7 @@
     {
       "quest_id": "mire_tonic",
       "display_name": "Mire tonic",
-      "start_text": "Brewer: Weave the reeds into a tonic, then buy one from the shop.",
+      "start_text": "Brewer: Start the Mire Tonic Run: weave the reeds into a tonic, then buy one from the shop.",
       "in_progress_text": "Brewer: The tonic still needs {missing_objectives}.",
       "completed_text": "Brewer: The tonic works. The shop can keep the supply steady.",
       "completion_text": "Quest complete: Mire tonic. Reward: 35 coins, +25 Herbalism XP.",
@@ -353,7 +353,7 @@
     {
       "quest_id": "mire_watch",
       "display_name": "Mire watch",
-      "start_text": "Guard: Bring down one mire bat, bank the spoils, and report back.",
+      "start_text": "Guard: Continue the Mire Tonic Run by bringing down one mire bat, banking the spoils, and reporting back.",
       "in_progress_text": "Guard: The marsh still needs {missing_objectives}.",
       "completed_text": "Guard: Good. The bats are not crowding the path now.",
       "completion_text": "Quest complete: Mire watch. Reward: 40 coins, +24 Attack XP.",

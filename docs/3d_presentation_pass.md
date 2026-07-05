@@ -34,7 +34,7 @@ This is an original classic top-down RPG presentation pass. It does not copy Run
 
 - Player, NPC, mob, station, and resource visuals are still generated placeholder meshes, but now use distinct silhouettes and material families.
 - There are no walk/combat/gathering animations yet.
-- Movement is still direct click-to-tile travel, not full pathfinding around blocked tiles.
+- Movement has simple cardinal blocked-tile routing, but not production pathfinding with diagonal movement, dynamic obstacles, or richer action ranges.
 - Terrain is generated from individual placeholder tiles, not a production terrain/mesh pipeline.
 - HUD and labels are cleaner, but still utilitarian and not final game UI.
 

@@ -354,6 +354,9 @@
       "xp_reward": 68,
       "item_reward": "willow_logs",
       "quantity_reward": 1,
+      "secondary_item_reward": "sap_glob",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.12,
       "depleted_state": "stump",
       "respawn_seconds": 28,
       "base_gather_seconds": 3.2,
@@ -372,6 +375,9 @@
       "xp_reward": 100,
       "item_reward": "maple_logs",
       "quantity_reward": 1,
+      "secondary_item_reward": "sap_glob",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.16,
       "depleted_state": "stump",
       "respawn_seconds": 32,
       "base_gather_seconds": 3.8,
@@ -387,11 +393,14 @@
       "display_name": "Yew tree",
       "skill_id": "woodcutting",
       "required_level": 60,
-      "xp_reward": 175,
+      "xp_reward": 190,
       "item_reward": "yew_logs",
       "quantity_reward": 1,
+      "secondary_item_reward": "sap_glob",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.2,
       "depleted_state": "stump",
-      "respawn_seconds": 36,
+      "respawn_seconds": 40,
       "base_gather_seconds": 4.6,
       "blocks_movement": true,
       "position": [
@@ -405,11 +414,14 @@
       "display_name": "Magic tree",
       "skill_id": "woodcutting",
       "required_level": 75,
-      "xp_reward": 250,
+      "xp_reward": 280,
       "item_reward": "magic_logs",
       "quantity_reward": 1,
+      "secondary_item_reward": "sap_glob",
+      "secondary_quantity_reward": 2,
+      "secondary_drop_chance": 0.24,
       "depleted_state": "stump",
-      "respawn_seconds": 45,
+      "respawn_seconds": 52,
       "base_gather_seconds": 5.8,
       "blocks_movement": true,
       "position": [
@@ -423,11 +435,14 @@
       "display_name": "Redwood tree",
       "skill_id": "woodcutting",
       "required_level": 90,
-      "xp_reward": 380,
+      "xp_reward": 430,
       "item_reward": "redwood_logs",
       "quantity_reward": 1,
+      "secondary_item_reward": "sap_glob",
+      "secondary_quantity_reward": 2,
+      "secondary_drop_chance": 0.28,
       "depleted_state": "stump",
-      "respawn_seconds": 60,
+      "respawn_seconds": 70,
       "base_gather_seconds": 7.0,
       "blocks_movement": true,
       "position": [
@@ -465,6 +480,9 @@
       "xp_reward": 35,
       "item_reward": "iron_ore",
       "quantity_reward": 1,
+      "secondary_item_reward": "gem_shard",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.1,
       "depleted_state": "depleted_rock",
       "respawn_seconds": 30,
       "base_gather_seconds": 2.8,
@@ -483,6 +501,9 @@
       "xp_reward": 50,
       "item_reward": "coal",
       "quantity_reward": 1,
+      "secondary_item_reward": "gem_shard",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.12,
       "depleted_state": "depleted_rock",
       "respawn_seconds": 35,
       "base_gather_seconds": 3.4,
@@ -501,6 +522,9 @@
       "xp_reward": 80,
       "item_reward": "mithril_ore",
       "quantity_reward": 1,
+      "secondary_item_reward": "gem_shard",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.16,
       "depleted_state": "depleted_rock",
       "respawn_seconds": 40,
       "base_gather_seconds": 4.1,
@@ -519,6 +543,9 @@
       "xp_reward": 120,
       "item_reward": "adamant_ore",
       "quantity_reward": 1,
+      "secondary_item_reward": "gem_shard",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.2,
       "depleted_state": "depleted_rock",
       "respawn_seconds": 45,
       "base_gather_seconds": 5.0,
@@ -534,11 +561,14 @@
       "display_name": "Starsteel rock",
       "skill_id": "mining",
       "required_level": 85,
-      "xp_reward": 200,
+      "xp_reward": 230,
       "item_reward": "starsteel_ore",
       "quantity_reward": 1,
+      "secondary_item_reward": "gem_shard",
+      "secondary_quantity_reward": 2,
+      "secondary_drop_chance": 0.25,
       "depleted_state": "depleted_rock",
-      "respawn_seconds": 60,
+      "respawn_seconds": 70,
       "base_gather_seconds": 6.5,
       "blocks_movement": true,
       "position": [
@@ -576,6 +606,9 @@
       "xp_reward": 50,
       "item_reward": "raw_trout",
       "quantity_reward": 1,
+      "secondary_item_reward": "tide_roe",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.12,
       "depleted_state": "quiet_water",
       "respawn_seconds": 18,
       "base_gather_seconds": 2.2,
@@ -594,6 +627,9 @@
       "xp_reward": 70,
       "item_reward": "raw_salmon",
       "quantity_reward": 1,
+      "secondary_item_reward": "tide_roe",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.14,
       "depleted_state": "quiet_water",
       "respawn_seconds": 21,
       "base_gather_seconds": 2.7,
@@ -612,6 +648,9 @@
       "xp_reward": 90,
       "item_reward": "raw_lobster",
       "quantity_reward": 1,
+      "secondary_item_reward": "tide_roe",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.16,
       "depleted_state": "quiet_water",
       "respawn_seconds": 24,
       "base_gather_seconds": 3.3,
@@ -630,6 +669,9 @@
       "xp_reward": 110,
       "item_reward": "raw_swordfish",
       "quantity_reward": 1,
+      "secondary_item_reward": "tide_roe",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.18,
       "depleted_state": "quiet_water",
       "respawn_seconds": 28,
       "base_gather_seconds": 4.0,
@@ -648,6 +690,9 @@
       "xp_reward": 130,
       "item_reward": "raw_monkfish",
       "quantity_reward": 1,
+      "secondary_item_reward": "tide_roe",
+      "secondary_quantity_reward": 1,
+      "secondary_drop_chance": 0.2,
       "depleted_state": "quiet_water",
       "respawn_seconds": 32,
       "base_gather_seconds": 4.5,
@@ -666,6 +711,9 @@
       "xp_reward": 180,
       "item_reward": "raw_shark",
       "quantity_reward": 1,
+      "secondary_item_reward": "tide_roe",
+      "secondary_quantity_reward": 2,
+      "secondary_drop_chance": 0.22,
       "depleted_state": "quiet_water",
       "respawn_seconds": 40,
       "base_gather_seconds": 5.5,
@@ -684,6 +732,9 @@
       "xp_reward": 220,
       "item_reward": "raw_anglerfish",
       "quantity_reward": 1,
+      "secondary_item_reward": "tide_roe",
+      "secondary_quantity_reward": 2,
+      "secondary_drop_chance": 0.25,
       "depleted_state": "quiet_water",
       "respawn_seconds": 48,
       "base_gather_seconds": 6.2,
@@ -699,11 +750,14 @@
       "display_name": "Apex trench",
       "skill_id": "fishing",
       "required_level": 90,
-      "xp_reward": 260,
+      "xp_reward": 300,
       "item_reward": "raw_apexfish",
       "quantity_reward": 1,
+      "secondary_item_reward": "tide_roe",
+      "secondary_quantity_reward": 2,
+      "secondary_drop_chance": 0.28,
       "depleted_state": "quiet_water",
-      "respawn_seconds": 56,
+      "respawn_seconds": 64,
       "base_gather_seconds": 7.0,
       "blocks_movement": false,
       "position": [
@@ -1312,7 +1366,7 @@
     "stock": [
       {
         "item_id": "trail_ration",
-        "price": 3
+        "price": 4
       },
       {
         "item_id": "bronze_axe",
@@ -1344,15 +1398,15 @@
       },
       {
         "item_id": "moon_potion",
-        "price": 24
+        "price": 28
       },
       {
         "item_id": "mire_tonic",
-        "price": 38
+        "price": 44
       },
       {
         "item_id": "fen_tonic",
-        "price": 34
+        "price": 40
       }
     ]
   },
@@ -1390,7 +1444,7 @@
       "drops": [
         {
           "item_id": "coins",
-          "quantity": 5
+          "quantity": 3
         },
         {
           "item_id": "wooden_splinters",
@@ -1415,7 +1469,7 @@
       "drops": [
         {
           "item_id": "coins",
-          "quantity": 7
+          "quantity": 5
         },
         {
           "item_id": "rusty_scrap",
@@ -1440,7 +1494,7 @@
       "drops": [
         {
           "item_id": "coins",
-          "quantity": 10
+          "quantity": 8
         },
         {
           "item_id": "bones",
@@ -1465,7 +1519,7 @@
       "drops": [
         {
           "item_id": "coins",
-          "quantity": 8
+          "quantity": 7
         },
         {
           "item_id": "gel",
@@ -1490,7 +1544,7 @@
       "drops": [
         {
           "item_id": "coins",
-          "quantity": 12
+          "quantity": 10
         },
         {
           "item_id": "bones",
@@ -1515,7 +1569,7 @@
       "drops": [
         {
           "item_id": "coins",
-          "quantity": 12
+          "quantity": 11
         },
         {
           "item_id": "rusty_scrap",
@@ -1544,7 +1598,7 @@
       "drops": [
         {
           "item_id": "coins",
-          "quantity": 14
+          "quantity": 12
         },
         {
           "item_id": "glow_dust",
@@ -1569,7 +1623,7 @@
       "drops": [
         {
           "item_id": "coins",
-          "quantity": 16
+          "quantity": 13
         },
         {
           "item_id": "wooden_splinters",
@@ -1590,7 +1644,7 @@
       "respawn_seconds": 24,
       "attack_style": "melee",
       "attack_range": 1,
-      "poison_chance": 0.3,
+      "poison_chance": 0.4,
       "poison_damage": 1,
       "poison_rounds": 3,
       "visual_kind": "mire_bat",
@@ -1601,7 +1655,7 @@
       "drops": [
         {
           "item_id": "coins",
-          "quantity": 18
+          "quantity": 16
         },
         {
           "item_id": "mire_goo",
@@ -1618,7 +1672,7 @@
       "respawn_seconds": 30,
       "attack_style": "melee",
       "attack_range": 1,
-      "poison_chance": 0.4,
+      "poison_chance": 0.5,
       "poison_damage": 2,
       "poison_rounds": 3,
       "visual_kind": "mire_bat",
@@ -1629,7 +1683,7 @@
       "drops": [
         {
           "item_id": "coins",
-          "quantity": 24
+          "quantity": 20
         },
         {
           "item_id": "mire_goo",
@@ -1646,7 +1700,7 @@
       "respawn_seconds": 28,
       "attack_style": "melee",
       "attack_range": 1,
-      "poison_chance": 0.35,
+      "poison_chance": 0.45,
       "poison_damage": 1,
       "poison_rounds": 4,
       "visual_kind": "fen_crawler",
@@ -1657,7 +1711,7 @@
       "drops": [
         {
           "item_id": "coins",
-          "quantity": 22
+          "quantity": 19
         },
         {
           "item_id": "fen_gel",
