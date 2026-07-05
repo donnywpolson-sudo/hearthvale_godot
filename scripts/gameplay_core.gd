@@ -30,6 +30,7 @@ var recipes_data := {}
 var quests_data := {}
 var ground_drop_counter := 0
 var active_shop_data := {}
+var last_feedback_text := ""
 
 
 func setup(initial_state: Dictionary, world_node: Node, hud_node: CanvasLayer) -> void:
@@ -785,6 +786,8 @@ func _assert_capacity_edges_for_smoke() -> bool:
 		return false
 	if _resource_is_depleted("capacity_tree"):
 		return false
+	if not _last_feedback_contains_all(["Inventory is full", "bank", "sell", "drop"]):
+		return false
 
 	state["inventory"] = {"bronze_axe": 1, "bronze_sword": INVENTORY_SLOT_LIMIT - 2, "logs": 1}
 	_gather_resource({
@@ -810,7 +813,7 @@ func _assert_capacity_edges_for_smoke() -> bool:
 	_combat_state()["ground_items"] = [blocked_drop.duplicate(true)]
 	_pick_up_drop(blocked_drop)
 	var ground_items = _combat_state().get("ground_items", [])
-	return _inventory_count("bones") == 0 and ground_items is Array and ground_items.size() == 1
+	return _inventory_count("bones") == 0 and ground_items is Array and ground_items.size() == 1 and _last_feedback_contains_all(["Inventory is full", "bank", "sell", "drop"])
 
 
 func _assert_core_progression_path_for_smoke() -> bool:
@@ -873,11 +876,15 @@ func _assert_inventory_item_actions_for_smoke() -> bool:
 		_handle_inventory_item_action_requested("bronze_sword", "equip")
 		passed = str(_equipment().get("weapon", "")) == "bronze_sword" and _inventory_count("bronze_sword") == 0
 	if passed:
+		state["inventory"]["bronze_sword"] = 1
+		_handle_inventory_item_action_requested("bronze_sword", "equip")
+		passed = str(_equipment().get("weapon", "")) == "bronze_sword" and _inventory_count("bronze_sword") == 1 and _last_feedback_contains_all(["already equipped"])
+	if passed:
 		_handle_equipment_item_action_requested("weapon", "unequip")
-		passed = str(_equipment().get("weapon", "")) == "" and _inventory_count("bronze_sword") == 1
+		passed = str(_equipment().get("weapon", "")) == "" and _inventory_count("bronze_sword") == 2
 	if passed:
 		_handle_inventory_item_action_requested("bronze_sword", "equip")
-		passed = str(_equipment().get("weapon", "")) == "bronze_sword" and _inventory_count("bronze_sword") == 0
+		passed = str(_equipment().get("weapon", "")) == "bronze_sword" and _inventory_count("bronze_sword") == 1
 	if passed:
 		state["inventory"] = {"iron_sword": INVENTORY_SLOT_LIMIT}
 		_handle_equipment_item_action_requested("weapon", "unequip")
@@ -1091,7 +1098,7 @@ func _gather_resource(object_data: Dictionary) -> void:
 		_feedback("You need %s level %d for %s; it gives %s and %d XP" % [_skill_name(skill_id), required_level, label, _item_name(item_id), xp])
 		return
 	if not _inventory_can_transact({}, {item_id: quantity}):
-		_feedback("Inventory is full")
+		_feedback(_inventory_full_message(_item_name(item_id)))
 		return
 	var action_key := "gather:%s" % node_id
 	if not _action_is_ready(action_key):
@@ -1147,7 +1154,7 @@ func _process_cooking() -> void:
 			return
 		var cooked_item := str(definition["cook_result"])
 		if not _inventory_can_transact({str(item_id): 1}, {cooked_item: 1}):
-			_feedback("Inventory is full")
+			_feedback(_inventory_full_message(_item_name(cooked_item)))
 			return
 		var action_key := "cook:%s" % str(item_id)
 		if not _action_is_ready(action_key):
@@ -1185,7 +1192,7 @@ func _process_recipe_type(action_type: String) -> void:
 			return
 		var output_quantity := int(recipe.get("output_quantity", 1))
 		if not _inventory_can_transact(recipe.get("inputs", {}), {output_item: output_quantity}):
-			_feedback("Inventory is full")
+			_feedback(_inventory_full_message(_item_name(output_item)))
 			return
 		var recipe_id := str(recipe.get("recipe_id", output_item))
 		var action_key := "recipe:%s:%s" % [action_type, recipe_id]
@@ -1231,8 +1238,13 @@ func _attack_mob(object_data: Dictionary) -> void:
 	if not (mob_state is Dictionary):
 		mob_state = {"hitpoints": max_hp, "dead": false}
 	if bool(mob_state.get("dead", false)):
-		_feedback("%s is defeated" % label)
-		return
+		if _mob_respawn_ready(mob_state):
+			mob_state = {"hitpoints": max_hp, "dead": false}
+			mobs[mob_id] = mob_state
+			combat["mobs"] = mobs
+		else:
+			_feedback(_mob_respawn_wait_message(label, mob_state))
+			return
 
 	var style := str(state.get("combat_training_style", "attack"))
 	if style not in ["attack", "strength", "defence", "ranged", "magic"]:
@@ -1251,11 +1263,17 @@ func _attack_mob(object_data: Dictionary) -> void:
 	if not poison_message.is_empty():
 		status_suffix = "; %s" % poison_message
 	if remaining <= 0:
-		mobs[mob_id] = {"hitpoints": 0, "dead": true}
+		var defeated_state := {"hitpoints": 0, "dead": true}
+		var respawn_seconds := _mob_respawn_seconds(object_data)
+		if respawn_seconds > 0.0:
+			defeated_state["respawn_at"] = _action_clock_seconds() + respawn_seconds
+		mobs[mob_id] = defeated_state
 		combat["mobs"] = mobs
 		_spawn_drops(object_data)
 		_record_combat_quest_flags(mob_id)
-		_feedback("Defeated %s; drops appeared; you: %d/%d HP%s" % [label, int(combat.get("current_hitpoints", 10)), _skill_level("hitpoints"), status_suffix])
+		var drops = object_data.get("drops", [])
+		var reward_message := "drops appeared" if drops is Array and not drops.is_empty() else "it will return soon"
+		_feedback("Defeated %s; %s; you: %d/%d HP%s" % [label, reward_message, int(combat.get("current_hitpoints", 10)), _skill_level("hitpoints"), status_suffix])
 		return
 
 	mobs[mob_id] = {"hitpoints": remaining, "dead": false}
@@ -1270,7 +1288,7 @@ func _pick_up_drop(object_data: Dictionary) -> void:
 		_feedback("Nothing to take")
 		return
 	if not _inventory_can_transact({}, {item_id: quantity}):
-		_feedback("Inventory is full")
+		_feedback(_inventory_full_message(_item_name(item_id)))
 		return
 	_add_inventory_item(item_id, quantity)
 	var combat := _combat_state()
@@ -1488,14 +1506,14 @@ func _withdraw_bank_item(item_id: String, requested_quantity: int) -> bool:
 	var requested: int = available if requested_quantity <= 0 else min(requested_quantity, available)
 	var quantity := _max_addable_quantity(item_id, requested)
 	if quantity <= 0:
-		_feedback("Inventory is full")
+		_feedback(_inventory_full_message(_item_name(item_id)))
 		return false
 	bank_items[item_id] = available - quantity
 	if int(bank_items[item_id]) <= 0:
 		bank_items.erase(item_id)
 	if not _add_inventory_item(item_id, quantity):
 		bank_items[item_id] = int(bank_items.get(item_id, 0)) + quantity
-		_feedback("Inventory is full")
+		_feedback(_inventory_full_message(_item_name(item_id)))
 		return false
 	_record_quest_flag("used_bank")
 	_feedback("Withdrew %d %s" % [quantity, _item_name(item_id)])
@@ -1511,7 +1529,7 @@ func _buy_shop_item(item_id: String, listed_price: int) -> bool:
 		_feedback("Not enough coins")
 		return false
 	if not _inventory_can_transact({"coins": price}, {item_id: 1}):
-		_feedback("Inventory is full")
+		_feedback(_inventory_full_message(_item_name(item_id)))
 		return false
 	_remove_inventory_item("coins", price)
 	_add_inventory_item(item_id, 1)
@@ -1565,7 +1583,8 @@ func _use_item(item_id: String) -> bool:
 	var current_hitpoints := int(combat.get("current_hitpoints", max_hitpoints))
 	var can_heal := heal_amount > 0 and current_hitpoints < max_hitpoints
 	var can_cleanse := cleanses_poison and _combat_is_poisoned()
-	if not can_heal and not can_cleanse and not has_buff:
+	var can_satisfy_food_quest := heal_amount > 0 and _active_quest_missing_flag("ate_food")
+	if not can_heal and not can_cleanse and not has_buff and not can_satisfy_food_quest:
 		_feedback("Already at full health")
 		return false
 	var healed: int = min(heal_amount, max_hitpoints - current_hitpoints) if can_heal else 0
@@ -1581,6 +1600,8 @@ func _use_item(item_id: String) -> bool:
 	var message := "Used %s" % _item_name(item_id)
 	if healed > 0:
 		message = "%s: healed %d HP" % [message, healed]
+	elif can_satisfy_food_quest:
+		message = "%s: saved for the quest" % message
 	if can_cleanse:
 		message = "%s; poison cleared" % message
 	if not buff_message.is_empty():
@@ -1678,7 +1699,7 @@ func _show_npc_dialogue(npc_data: Dictionary) -> void:
 				message = str(definition.get("return_objective", "Ready to complete."))
 				action_label = "Complete"
 			else:
-				message = "Inventory is full"
+				message = _inventory_full_message("quest rewards")
 		else:
 			var names: Array[String] = []
 			for objective in missing:
@@ -1726,11 +1747,11 @@ func _advance_npc_quest(npc_data: Dictionary) -> void:
 		return
 
 	if not _can_apply_item_rewards(definition):
-		_feedback("Inventory is full")
+		_feedback(_inventory_full_message("quest rewards"))
 		_sync_quest_state(root)
 		return
 	if not _apply_quest_rewards(definition):
-		_feedback("Inventory is full")
+		_feedback(_inventory_full_message("quest rewards"))
 		_sync_quest_state(root)
 		return
 	quest_state["completed"] = true
@@ -1831,11 +1852,14 @@ func _equip_item(item_id: String) -> bool:
 		return false
 	var equipment := _equipment()
 	var previous_item := str(equipment.get(slot, ""))
+	if previous_item == item_id:
+		_feedback("%s is already equipped to %s" % [_item_name(item_id), _display_label(slot)])
+		return false
 	var add_back := {}
 	if not previous_item.is_empty():
 		add_back[previous_item] = 1
 	if not _inventory_can_transact({item_id: 1}, add_back):
-		_feedback("Inventory is full")
+		_feedback(_inventory_full_message(_item_name(item_id)))
 		return false
 	_remove_inventory_item(item_id, 1)
 	if not previous_item.is_empty():
@@ -1859,12 +1883,12 @@ func _unequip_item(slot: String) -> bool:
 		_feedback("No item equipped in %s" % _display_label(slot))
 		return false
 	if not _inventory_can_transact({}, {item_id: 1}):
-		_feedback("Inventory is full")
+		_feedback(_inventory_full_message(_item_name(item_id)))
 		return false
 	equipment.erase(slot)
 	if not _add_inventory_item(item_id, 1):
 		equipment[slot] = item_id
-		_feedback("Inventory is full")
+		_feedback(_inventory_full_message(_item_name(item_id)))
 		return false
 	_feedback("Unequipped %s from %s" % [_item_name(item_id), _display_label(slot)])
 	return true
@@ -1916,6 +1940,21 @@ func _quest_root() -> Dictionary:
 	if not state.has("quest_progress") or not (state["quest_progress"] is Dictionary):
 		state["quest_progress"] = {}
 	return root
+
+
+func _active_quest_missing_flag(flag: String) -> bool:
+	var root := _quest_root()
+	var active_quest_id := str(root.get("active_quest_id", "starter_path"))
+	var definition := _quest_definition(active_quest_id)
+	if definition.is_empty():
+		return false
+	var quest_state := _quest_state_for(active_quest_id)
+	if not bool(quest_state.get("started", false)) or bool(quest_state.get("completed", false)):
+		return false
+	for objective in _missing_objectives(definition, quest_state):
+		if objective is Dictionary and str(objective.get("flag", "")) == flag:
+			return true
+	return false
 
 
 func _quest_states() -> Dictionary:
@@ -2488,8 +2527,41 @@ func _interaction_panel_matches(expected_title: String) -> bool:
 
 
 func _feedback(message: String) -> void:
+	last_feedback_text = message
 	if hud != null and hud.has_method("set_feedback"):
 		hud.set_feedback(message)
+
+
+func _inventory_full_message(blocked_label: String = "") -> String:
+	var label := blocked_label.strip_edges()
+	if label.is_empty():
+		return "Inventory is full; bank, sell, drop, or use items to make room."
+	return "Inventory is full; bank, sell, drop, or use items to make room for %s." % label
+
+
+func _last_feedback_contains_all(markers: Array) -> bool:
+	var lower_feedback := last_feedback_text.to_lower()
+	for marker in markers:
+		if lower_feedback.find(str(marker).to_lower()) == -1:
+			return false
+	return true
+
+
+func _mob_respawn_seconds(object_data: Dictionary) -> float:
+	return max(0.0, float(object_data.get("respawn_seconds", 0.0)))
+
+
+func _mob_respawn_ready(mob_state: Dictionary) -> bool:
+	if not mob_state.has("respawn_at") or mob_state["respawn_at"] == null:
+		return false
+	return _action_clock_seconds() >= float(mob_state["respawn_at"])
+
+
+func _mob_respawn_wait_message(label: String, mob_state: Dictionary) -> String:
+	if mob_state.has("respawn_at") and mob_state["respawn_at"] != null:
+		var remaining: int = max(1, int(ceil(float(mob_state["respawn_at"]) - _action_clock_seconds())))
+		return "%s is defeated; wait %d seconds for it to return" % [label, remaining]
+	return "%s is defeated" % label
 
 
 func _load_json(path: String) -> Dictionary:

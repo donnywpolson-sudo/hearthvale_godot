@@ -21,16 +21,20 @@ Stop-Process -Id <stale_pid> -Force
 
 ## Headless Playtest Simulation
 
-Use the Godot-native playtest simulation runner for longer seeded automated playtest simulation bot runs that record bugs, softlocks, QOL annoyances, and balance signals. The clickable launcher publishes user-facing outputs under `.godot/ai_simulation/latest/`, and detailed generated reports stay under `.godot/ai_simulation/archive/`.
+Use the Godot-native playtest simulation runner for longer seeded automated playtest simulation bot runs that record bugs, softlocks, QOL annoyances, and balance signals. The clickable launcher publishes user-facing outputs directly under `.godot/ai_simulation/`, and detailed generated reports stay under `.godot/ai_simulation/archive/`.
 
-For the simplest workflow, double-click `RUN_AI_SIMULATION_PROMPT.bat` in the project root. It is a thin clickable wrapper around the direct Godot command, opens an interactive tier menu, shows command-line progress while Godot is running, publishes `ai_simulation_latest_codex_prompt.md` when publish safety allows it, then opens that prompt in Notepad so it can be pasted into Codex.
+For the simplest workflow, double-click `HEARTHVALE_AI_SIMULATION.bat` in the project root. It is the direct clickable project launcher, opens an interactive tier menu, shows command-line progress while Godot is running, publishes one timestamped Codex prompt and one same-timestamp JSON summary when publish safety allows it, then opens the prompt in Notepad so it can be pasted into Codex.
 
 Clickable tiers:
 
-- Strategy Smoke: 12 runs, 150 steps, seed 1, scenario `all`, trace `issues`, balance profile `default`, 60 second cap. This is the recommended first choice.
-- Medium: 1000 runs, 300 steps, 10 minute cap. Use for normal balance and progression signal after the workflow is stable.
-- Deep: 10000 runs, 720 steps, 3 hour cap. Use for broad stochastic coverage.
-- Overnight: 16000 runs, 1800 steps, 10 hour cap. Use only for unattended sweeps.
+- Strategy Smoke: estimated ~1 min, 12 runs, 150 steps, scenario/profile `all/default`, seed 1, trace `issues`, scenario probes `auto` -> smoke. This is the recommended first choice.
+- Medium: estimated ~10 min, 1000 runs, 300 steps, scenario/profile `all/default`, scenario probes `auto` -> full. Use for normal balance and progression signal after the workflow is stable.
+- Deep: estimated ~3 hr, 10000 runs, 720 steps, scenario/profile `all/coverage`, scenario probes `auto` -> full. Use for broad stochastic coverage.
+- Overnight: estimated ~10 hr, 16000 runs, 1800 steps, scenario/profile `all/coverage`, scenario probes `auto` -> full. Use only for unattended sweeps.
+
+Tier runtimes are estimates, not enforced caps. The launcher passes `--timeout-seconds 0` for built-in tiers so they can finish naturally.
+
+`--seed` is the base seed. Each run uses `base_seed + run_index`, so `--runs 1000 --seed 1` covers seeds 1 through 1000. Increase `--runs` for more independent seeds. Increase `--steps` for longer play sessions within each seed.
 
 Scenarios:
 
@@ -55,14 +59,25 @@ Balance profiles:
 - `combat`: emphasizes combat, survival, recovery pressure, mob defeats, and loot value.
 - `coverage`: broad coverage with extra random-guard pressure.
 
+Scenario probes:
+
+- `auto`: reduced deterministic probes for Strategy Smoke/custom/publish-smoke runs; full deterministic probes for Medium, Deep, and Overnight-sized runs.
+- `off`: skip deterministic probes.
+- `smoke`: run a reduced deterministic probe set for core loop, starter quest, combat/loot, economy, and inventory pressure.
+- `full`: run the smoke probes plus broader skill, recipe, quest, and mob probes.
+
+Scenario probes are report-only diagnostics inside `summary.json` and the generated prompt. They do not make the simulation exit nonzero unless the runner itself crashes or cannot write outputs. Focused smokes remain the pass/fail authority for protected behavior.
+
 For automation or tuned runs, prefer the direct Godot command below. The root `.bat` accepts the same practical launch values as positional arguments when a clickable project-root launcher is more convenient:
 
 ```powershell
-.\RUN_AI_SIMULATION_PROMPT.bat 1000 300 1 all issues default
+.\HEARTHVALE_AI_SIMULATION.bat 1000 300 1 all issues default 0 auto
 ```
 
+The optional seventh `.bat` argument is timeout seconds. `0` disables the timeout; positive values restore a runtime cap for a specific run. The optional eighth argument is scenario probes: `auto`, `off`, `smoke`, or `full`.
+
 ```powershell
-& 'C:\Users\donny\Desktop\Godot_v4.7-stable_win64.exe' --headless --path . --script res://scripts/playtest_simulation_runner.gd --log-file .godot_logs\playtest_simulation.log -- --runs 1000 --steps 300 --seed 1 --scenario all --trace issues --balance-profile default --output-dir res://.godot/ai_simulation/_working/current --publish-latest --public-output-root res://.godot/ai_simulation
+& 'C:\Users\donny\Desktop\Godot_v4.7-stable_win64.exe' --headless --path . --script res://scripts/playtest_simulation_runner.gd --log-file .godot_logs\playtest_simulation.log -- --runs 1000 --steps 300 --seed 1 --scenario all --trace issues --balance-profile default --scenario-probes auto --output-dir res://.godot/ai_simulation/_working/current --publish-latest --public-output-root res://.godot/ai_simulation --timeout-seconds 0
 ```
 
 Replay a specific issue sample with the seed and scenario from `issues.jsonl`:
@@ -71,15 +86,23 @@ Replay a specific issue sample with the seed and scenario from `issues.jsonl`:
 & 'C:\Users\donny\Desktop\Godot_v4.7-stable_win64.exe' --headless --path . --script res://scripts/playtest_simulation_runner.gd --log-file .godot_logs\playtest_replay.log -- --runs 1 --steps 300 --seed <seed> --scenario <scenario> --trace all
 ```
 
-Public latest outputs are `.godot/ai_simulation/latest/ai_simulation_latest.json`, `.godot/ai_simulation/latest/ai_simulation_latest.md`, `.godot/ai_simulation/latest/ai_simulation_latest_codex_prompt.md`, `.godot/ai_simulation/latest/ai_simulation_latest_polish_telemetry.json`, and `.godot/ai_simulation/latest/ai_simulation_latest_manual_polish_review.md`. Before a successful publish replaces `latest`, the previous `latest` files move into `.godot/ai_simulation/archive/<timestamp>/previous_latest`, and the new run's detailed reports are copied into `.godot/ai_simulation/archive/<timestamp>/full_reports`. Internal reports include `runs.jsonl`, `issues.jsonl`, `summary.json`, `replay_manifest.json`, `telemetry_summary.json`, `balance_profiles.json`, `performance_observations.json`, `polish_telemetry.json`, `manual_polish_review.md`, `improvement_plan.md`, and `codex_prompt.md`; `progress.json` is transient live status for the command-line progress bar. `trace.jsonl` is also written when trace mode is `all`, and issue samples can write JSON-safe failed-state snapshots under `snapshots/`. Paste `ai_simulation_latest_codex_prompt.md` into a new Codex thread when you want an implementation agent to verify and fix the ranked findings. Simulation and polish findings are evidence candidates, not proof; verify each finding against current code, data, deterministic replay, or manual review before changing gameplay. By default the command exits `0` when the harness completes, even if it finds issues; add `--fail-on-issues` only when issue findings should fail the run.
+Public outputs are exactly two files under `.godot/ai_simulation/`: `ai_simulation_codex_prompt_YYYY_MM_DD_HHMM.md` and `ai_simulation_data_YYYY_MM_DD_HHMM.json`. Use the prompt as the single Markdown handoff to paste into Codex; use the same-timestamp JSON file only when structured detail is needed. The timestamp is 24-hour local time, for example `ai_simulation_codex_prompt_2026_07_05_0357.md`. The new run's detailed internal reports are still copied into `.godot/ai_simulation/archive/<timestamp>/full_reports`. Internal reports include `runs.jsonl`, `issues.jsonl`, `summary.json`, `replay_manifest.json`, `telemetry_summary.json`, `balance_profiles.json`, `performance_observations.json`, `polish_telemetry.json`, `manual_polish_review.md`, `improvement_plan.md`, and `codex_prompt.md`; `summary.json` also includes the `scenario_probes` block and advisory 0-100 `scorecard` category scores with relevant metrics. `progress.json` is transient live status for the command-line progress bar. `trace.jsonl` is also written when trace mode is `all`, and issue samples can write JSON-safe failed-state snapshots under `snapshots/`. Simulation, scenario probe, scorecard, and polish findings are evidence candidates, not proof; verify each finding against current code, data, deterministic replay, focused smokes, or manual review before changing gameplay. By default the command exits `0` when the harness completes, even if it finds issues; add `--fail-on-issues` only when issue findings should fail the run. A successful command exit can also mean lower-coverage publishing was safely blocked; check `latest_publish_status` before assuming new public prompt/JSON files were written.
 
-Generated reports include a `trust` block with `run_strength`, `coverage_scope`, `implementation_ready`, `harness_status`, `finding_status`, `latest_publish_status`, and replay hash guidance. `publish_smoke` reports are not implementation-ready and generated Markdown says so in the first screen. `latest` publishing blocks lower-coverage output from replacing stronger output by default; set `HV_SIM_ALLOW_LATEST_DOWNGRADE=1` to allow that replacement, or `HV_SIM_REQUIRE_PUBLISH_LATEST=1` when a blocked publish should fail automation. Replay evidence is valid only for the code/data hashes recorded in `replay_manifest.json`; if `build_hash`, any `data_hashes`, or any `script_hashes` differ, the replay is under changed code and cannot close the original issue by itself.
+Read-only publish artifact checklist:
+
+- Confirm the root `.godot/ai_simulation/ai_simulation_codex_prompt_YYYY_MM_DD_HHMM.md` prompt exists.
+- Confirm the root `.godot/ai_simulation/ai_simulation_data_YYYY_MM_DD_HHMM.json` summary exists with the same timestamp as the prompt.
+- Confirm the JSON summary includes a `trust` block.
+- Confirm replay hashes exist through `replay_metadata.build_hash`, `replay_metadata.data_hashes`, and `replay_metadata.script_hashes`.
+- Confirm `_working/current` is not cited as public evidence after a later run; it is disposable working output.
+
+Generated reports include a `trust` block with `run_strength`, `coverage_scope`, `implementation_ready`, `harness_status`, `finding_status`, `latest_publish_status`, and replay hash guidance. `summary.json` also includes a `scorecard` block with advisory 0-100 category scores, confidence labels, score basis text, and the underlying metrics used for the score. `publish_smoke` reports are not implementation-ready and generated Markdown says so in the first screen. Publishing blocks lower-coverage output from becoming the most recent public output by default; set `HV_SIM_ALLOW_LATEST_DOWNGRADE=1` to allow that replacement, or `HV_SIM_REQUIRE_PUBLISH_LATEST=1` when a blocked publish should fail automation. When publishing is blocked and `HV_SIM_REQUIRE_PUBLISH_LATEST` is not set, the command may still exit successfully while leaving the public prompt/JSON pair unchanged. Replay evidence is valid only for the code/data hashes recorded in `replay_manifest.json`; if `build_hash`, any `data_hashes`, or any `script_hashes` differ, the replay is under changed code and cannot close the original issue by itself.
 
 ## Quality Tooling Ownership
 
 Use `docs/codex_phase_driver_prompt.md` when advancing the broader quality/dev-tooling plan one phase at a time.
 
-Keep simulation-specific work in `scripts/playtest_simulation_runner.gd` and its generated reports: deterministic replay metadata, AI director/chaos behavior, simulation-step invariant checks, local telemetry summaries, balance simulation profiles, human-facing polish telemetry, failed-run state summaries, and advisory simulation performance observations.
+Keep simulation-specific work in `scripts/playtest_simulation_runner.gd` and its generated reports: deterministic replay metadata, AI director/chaos behavior, simulation-step invariant checks, local telemetry summaries, balance simulation profiles, scenario probe diagnostics, human-facing polish telemetry, failed-run state summaries, and advisory simulation performance observations.
 
 Keep validators, golden scenario smokes, save/load torture smokes, debug command console, and debug overlays runnable without the simulation bot. Shared logic such as invariants or future snapshots should live in reusable helpers that both the focused smokes and simulation runner can call.
 

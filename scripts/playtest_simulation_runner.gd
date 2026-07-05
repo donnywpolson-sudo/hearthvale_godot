@@ -12,7 +12,8 @@ const DEFAULT_SEED := 1
 const DEFAULT_SCENARIO := "all"
 const DEFAULT_TRACE := "issues"
 const DEFAULT_BALANCE_PROFILE := "default"
-const DEFAULT_TIMEOUT_SECONDS := 7200.0
+const DEFAULT_TIMEOUT_SECONDS := 0.0
+const DEFAULT_SCENARIO_PROBES := "auto"
 const INVENTORY_SLOT_LIMIT := 28
 const PERF_BUDGET_AVERAGE_ACTION_USEC := 16667.0
 const PERF_BUDGET_SLOW_ACTION_RATE := 0.25
@@ -99,6 +100,7 @@ var scenario_metrics := {}
 var replay_metadata := {}
 var telemetry_summary := {}
 var polish_telemetry_summary := {}
+var scenario_probe_report := {}
 var trust_context := {}
 var previous_latest_context := {}
 var latest_publish_status := "not_requested"
@@ -125,6 +127,10 @@ var current_polish_feedback_counts := {}
 var last_progress_percent_printed := -1
 var last_progress_status := ""
 var progress_started_msec := 0
+var timeout_deadline_msec := 0
+var timeout_abort_requested := false
+var scenario_probe_active := false
+var current_probe_issues := []
 
 
 func _init() -> void:
@@ -140,12 +146,14 @@ func _run() -> void:
 		quit(1)
 		return
 
-	var watchdog := create_timer(float(config["timeout_seconds"]))
-	watchdog.timeout.connect(func() -> void:
-		push_error("Hearthvale playtest simulation timed out.")
-		_close_outputs()
-		quit(1)
-	)
+	timeout_abort_requested = false
+	timeout_deadline_msec = 0
+	if float(config["timeout_seconds"]) > 0.0:
+		timeout_deadline_msec = Time.get_ticks_msec() + int(ceil(float(config["timeout_seconds"]) * 1000.0))
+		var watchdog := create_timer(float(config["timeout_seconds"]))
+		watchdog.timeout.connect(func() -> void:
+			_request_timeout_abort()
+		)
 
 	_load_data()
 	_discover_content()
@@ -167,13 +175,20 @@ func _run() -> void:
 		return
 
 	for run_index in range(int(config["runs"])):
+		if _timeout_exceeded():
+			_request_timeout_abort()
+			return
 		var run_summary := await _run_single_simulation(run_index)
+		if timeout_abort_requested or _timeout_exceeded():
+			_request_timeout_abort()
+			return
 		run_summaries.append(run_summary)
 		_write_json_line(runs_file, run_summary)
 		_update_scenario_metrics(run_summary)
 		_update_telemetry_summary(run_summary)
 		_update_polish_telemetry_summary(run_summary)
 
+	scenario_probe_report = await _run_scenario_probes()
 	trust_context = _build_trust_context()
 	_apply_latest_publish_status()
 	replay_metadata["trust"] = trust_context.duplicate(true)
@@ -214,6 +229,7 @@ func _parse_args() -> Dictionary:
 		"scenario": DEFAULT_SCENARIO,
 		"trace": DEFAULT_TRACE,
 		"balance_profile": DEFAULT_BALANCE_PROFILE,
+		"scenario_probes": DEFAULT_SCENARIO_PROBES,
 		"output_dir": DEFAULT_OUTPUT_DIR,
 		"public_output_root": DEFAULT_PUBLIC_OUTPUT_ROOT,
 		"publish_latest": false,
@@ -269,6 +285,11 @@ func _parse_args() -> Dictionary:
 				if not profile_value.is_empty():
 					index += 1
 					parsed["balance_profile"] = profile_value
+			"--scenario-probes":
+				var probe_value := _arg_value(args, index, arg, errors)
+				if not probe_value.is_empty():
+					index += 1
+					parsed["scenario_probes"] = probe_value
 			"--output-dir":
 				var output_value := _arg_value(args, index, arg, errors)
 				if not output_value.is_empty():
@@ -305,10 +326,31 @@ func _parse_args() -> Dictionary:
 	return parsed
 
 
+func _timeout_exceeded() -> bool:
+	return timeout_deadline_msec > 0 and Time.get_ticks_msec() >= timeout_deadline_msec
+
+
+func _request_timeout_abort() -> void:
+	if timeout_abort_requested:
+		return
+	timeout_abort_requested = true
+	_write_progress("timed_out", current_run_index, current_step, current_scenario)
+	push_error("Hearthvale playtest simulation timed out after %s seconds." % str(config.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS)))
+	_close_outputs()
+	quit(1)
+
+
+func _timeout_text() -> String:
+	if float(config.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS)) <= 0.0:
+		return "disabled"
+	return "%s seconds" % str(config.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS))
+
+
 func _print_usage() -> void:
-	print("Usage: -- --runs 1000 --steps 300 --seed 1 --scenario all --trace issues --balance-profile default --output-dir res://.godot_logs/simulation --publish-latest --public-output-root res://.godot/ai_simulation --timeout-seconds 7200")
+	print("Usage: -- --runs 1000 --steps 300 --seed 1 --scenario all --trace issues --balance-profile default --scenario-probes auto --output-dir res://.godot_logs/simulation --publish-latest --public-output-root res://.godot/ai_simulation --timeout-seconds 0")
 	print("Scenarios: all, %s" % ", ".join(SCENARIOS))
 	print("Balance profiles: %s" % ", ".join(_balance_profile_ids()))
+	print("Scenario probes: auto, off, smoke, full")
 	print("Trace modes: issues, all")
 	print("Add --fail-on-issues only when issue findings should fail the command.")
 	print("Add --allow-latest-downgrade only when a weaker run may replace a stronger latest report.")
@@ -355,8 +397,12 @@ func _validate_config() -> bool:
 	if not BALANCE_PROFILES.has(balance_profile):
 		push_error("--balance-profile must be one of: %s" % ", ".join(_balance_profile_ids()))
 		return false
-	if float(config["timeout_seconds"]) <= 0.0:
-		push_error("--timeout-seconds must be positive.")
+	var scenario_probes := str(config["scenario_probes"])
+	if scenario_probes not in ["auto", "off", "smoke", "full"]:
+		push_error("--scenario-probes must be auto, off, smoke, or full.")
+		return false
+	if float(config["timeout_seconds"]) < 0.0:
+		push_error("--timeout-seconds must be non-negative. Use 0 to disable the timeout.")
 		return false
 	return true
 
@@ -487,7 +533,7 @@ func _print_progress_line(progress: Dictionary) -> void:
 	var status := str(progress.get("status", "starting"))
 	var raw_percent := int(floor(float(progress.get("percent", 0.0))))
 	var percent_int: int = clamp(raw_percent, 0, 100)
-	if percent_int <= last_progress_percent_printed:
+	if percent_int <= last_progress_percent_printed and status == last_progress_status:
 		return
 	last_progress_status = status
 	last_progress_percent_printed = percent_int
@@ -505,15 +551,27 @@ func _print_progress_line(progress: Dictionary) -> void:
 	var eta_seconds := int(progress.get("eta_seconds", -1))
 	var eta_text := "--"
 	if eta_seconds >= 0:
-		eta_text = "%ds" % eta_seconds
-	print("PROGRESS [%s] %d%% %d/%d runs elapsed %ds ETA %s" % [
+		eta_text = _format_duration(eta_seconds)
+	print("  [%s] %d%% | %d/%d runs | elapsed %s | ETA %s" % [
 		bar,
 		percent_int,
 		completed_runs,
 		int(progress.get("runs", 1)),
-		int(progress.get("elapsed_seconds", 0)),
+		_format_duration(int(progress.get("elapsed_seconds", 0))),
 		eta_text,
 	])
+
+
+func _format_duration(total_seconds: int) -> String:
+	var safe_seconds: int = max(0, total_seconds)
+	var hours: int = int(floor(float(safe_seconds) / 3600.0))
+	var minutes: int = int(floor(float(safe_seconds % 3600) / 60.0))
+	var seconds: int = safe_seconds % 60
+	if hours > 0:
+		return "%dh%02dm" % [hours, minutes]
+	if minutes > 0:
+		return "%dm%02ds" % [minutes, seconds]
+	return "%ds" % seconds
 
 
 func _open_outputs() -> bool:
@@ -591,6 +649,18 @@ func _implementation_ready() -> bool:
 	return int(config.get("runs", DEFAULT_RUNS)) >= 12 and int(config.get("steps", DEFAULT_STEPS)) >= 150 and str(config.get("scenario", DEFAULT_SCENARIO)) == "all"
 
 
+func _resolved_scenario_probe_mode() -> String:
+	var requested := str(config.get("scenario_probes", DEFAULT_SCENARIO_PROBES))
+	if requested == "off":
+		return "off"
+	if requested in ["smoke", "full"]:
+		return requested
+	var strength := _run_strength()
+	if strength in ["balance_pass", "deep_sweep"]:
+		return "full"
+	return "smoke"
+
+
 func _run_strength_rank(strength: String) -> int:
 	match strength:
 		"publish_smoke":
@@ -609,7 +679,7 @@ func _run_strength_rank(strength: String) -> int:
 func _read_previous_latest_context() -> Dictionary:
 	if not bool(config.get("publish_latest", false)):
 		return {}
-	var path := "%s/latest/ai_simulation_latest.json" % str(config.get("public_output_root", DEFAULT_PUBLIC_OUTPUT_ROOT))
+	var path := _latest_public_summary_path()
 	if not FileAccess.file_exists(path):
 		return {}
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -632,6 +702,31 @@ func _read_previous_latest_context() -> Dictionary:
 		"run_strength": run_strength,
 		"config": previous_config if previous_config is Dictionary else {},
 	}
+
+
+func _latest_public_summary_path() -> String:
+	var public_root := str(config.get("public_output_root", DEFAULT_PUBLIC_OUTPUT_ROOT))
+	var dir := DirAccess.open(ProjectSettings.globalize_path(public_root))
+	var newest_path := ""
+	var newest_modified := 0
+	if dir != null:
+		dir.list_dir_begin()
+		var file_name := dir.get_next()
+		while not file_name.is_empty():
+			if not dir.current_is_dir() and file_name.begins_with("ai_simulation_") and file_name.ends_with(".json"):
+				var candidate := "%s/%s" % [public_root, file_name]
+				var modified := FileAccess.get_modified_time(ProjectSettings.globalize_path(candidate))
+				if newest_path.is_empty() or modified > newest_modified:
+					newest_path = candidate
+					newest_modified = modified
+			file_name = dir.get_next()
+		dir.list_dir_end()
+	if not newest_path.is_empty():
+		return newest_path
+	var legacy_path := "%s/latest/ai_simulation_latest.json" % public_root
+	if FileAccess.file_exists(legacy_path):
+		return legacy_path
+	return ""
 
 
 func _run_strength_for_config(raw_config) -> String:
@@ -681,43 +776,28 @@ func _hash_verification_guidance() -> Dictionary:
 
 func _publish_latest_outputs() -> bool:
 	if str(latest_publish_status) == "blocked_lower_coverage":
-		print("WARNING: lower-coverage output was not published to latest.")
+		print("WARNING: lower-coverage output was not published as the most recent AI simulation output.")
 		return not bool(config.get("require_publish_latest", false))
 
 	var output_dir := str(config["output_dir"])
 	var public_root := str(config.get("public_output_root", DEFAULT_PUBLIC_OUTPUT_ROOT))
-	var latest_dir := "%s/latest" % public_root
 	var archive_root := "%s/archive" % public_root
-	var staging_root := "%s/_staging" % public_root
 	var stamp := _archive_timestamp()
 	var archive_dir := _unique_dir_path("%s/%s" % [archive_root, stamp])
-	var staging_dir := _unique_dir_path("%s/latest_%s" % [staging_root, stamp])
+	var public_json := _unique_file_path("%s/ai_simulation_data_%s.json" % [public_root, stamp])
+	var public_prompt := _unique_file_path("%s/ai_simulation_codex_prompt_%s.md" % [public_root, stamp])
 
-	if not _ensure_dir(public_root) or not _ensure_dir(archive_root) or not _ensure_dir(staging_root):
-		return false
-	if not _ensure_dir(staging_dir):
+	if not _ensure_dir(public_root) or not _ensure_dir(archive_root):
 		return false
 
 	var public_files := [
 		{
 			"source": "%s/summary.json" % output_dir,
-			"target": "%s/ai_simulation_latest.json" % staging_dir,
-		},
-		{
-			"source": "%s/improvement_plan.md" % output_dir,
-			"target": "%s/ai_simulation_latest.md" % staging_dir,
+			"target": public_json,
 		},
 		{
 			"source": "%s/codex_prompt.md" % output_dir,
-			"target": "%s/ai_simulation_latest_codex_prompt.md" % staging_dir,
-		},
-		{
-			"source": "%s/polish_telemetry.json" % output_dir,
-			"target": "%s/ai_simulation_latest_polish_telemetry.json" % staging_dir,
-		},
-		{
-			"source": "%s/manual_polish_review.md" % output_dir,
-			"target": "%s/ai_simulation_latest_manual_polish_review.md" % staging_dir,
+			"target": public_prompt,
 		},
 	]
 	for mapping in public_files:
@@ -730,29 +810,22 @@ func _publish_latest_outputs() -> bool:
 	if not _copy_dir_recursive(output_dir, full_reports_dir):
 		return false
 
-	if _dir_exists(latest_dir):
-		var previous_latest_dir := "%s/previous_latest" % archive_dir
-		if not _rename_dir(latest_dir, previous_latest_dir):
-			return false
-
-	if not _rename_dir(staging_dir, latest_dir):
-		return false
-
-	print("Published AI simulation latest outputs to %s" % public_root)
+	print("Published AI simulation outputs:")
+	print("  Prompt: %s" % public_prompt)
+	print("  JSON: %s" % public_json)
 	if str(latest_publish_status) == "published_allowed_downgrade":
-		print("WARNING: latest was replaced by lower-coverage output. Use archive for the stronger previous run.")
+		print("WARNING: lower-coverage output was published. Use archive for stronger previous runs.")
 	return true
 
 
 func _archive_timestamp() -> String:
 	var time := Time.get_datetime_dict_from_system()
-	return "%04d%02d%02d_%02d%02d%02d" % [
+	return "%04d_%02d_%02d_%02d%02d" % [
 		int(time.get("year", 0)),
 		int(time.get("month", 0)),
 		int(time.get("day", 0)),
 		int(time.get("hour", 0)),
 		int(time.get("minute", 0)),
-		int(time.get("second", 0)),
 	]
 
 
@@ -763,6 +836,21 @@ func _unique_dir_path(base_path: String) -> String:
 	while _dir_exists("%s_%d" % [base_path, suffix]):
 		suffix += 1
 	return "%s_%d" % [base_path, suffix]
+
+
+func _unique_file_path(base_path: String) -> String:
+	if not FileAccess.file_exists(base_path):
+		return base_path
+	var extension := ""
+	var stem := base_path
+	var dot_index := base_path.rfind(".")
+	if dot_index > -1:
+		extension = base_path.substr(dot_index)
+		stem = base_path.substr(0, dot_index)
+	var suffix := 2
+	while FileAccess.file_exists("%s_%d%s" % [stem, suffix, extension]):
+		suffix += 1
+	return "%s_%d%s" % [stem, suffix, extension]
 
 
 func _ensure_dir(path: String) -> bool:
@@ -876,6 +964,10 @@ func _run_single_simulation(run_index: int) -> Dictionary:
 	var first_digest := _state_digest()
 	var initial_summary := StateSnapshot.summarize_state(current_state)
 	for step in range(int(config["steps"])):
+		if _timeout_exceeded():
+			_write_progress("timed_out", current_run_index, current_step, current_scenario)
+			_cleanup_current_simulation_run(store)
+			return {}
 		current_step = step
 		var action_name := _resolve_action_preconditions(_choose_action(current_scenario, step), step)
 		var before_digest := _state_digest()
@@ -915,6 +1007,10 @@ func _run_single_simulation(run_index: int) -> Dictionary:
 		_advance_clock_between_actions(action_record)
 		if _should_write_progress(step):
 			_write_progress("running", current_run_index, step + 1, current_scenario)
+		if _timeout_exceeded():
+			_write_progress("timed_out", current_run_index, step + 1, current_scenario)
+			_cleanup_current_simulation_run(store)
+			return {}
 
 	var final_digest := _state_digest()
 	var final_summary := StateSnapshot.summarize_state(current_state)
@@ -948,10 +1044,19 @@ func _run_single_simulation(run_index: int) -> Dictionary:
 		},
 	}
 
-	current_gameplay.free()
-	current_hud.free()
-	current_world.free()
-	store.free()
+	_cleanup_current_simulation_run(store)
+	return summary
+
+
+func _cleanup_current_simulation_run(store: Object) -> void:
+	if current_gameplay != null and is_instance_valid(current_gameplay):
+		current_gameplay.free()
+	if current_hud != null and is_instance_valid(current_hud):
+		current_hud.free()
+	if current_world != null and is_instance_valid(current_world):
+		current_world.free()
+	if store != null and is_instance_valid(store):
+		store.free()
 	current_gameplay = null
 	current_hud = null
 	current_world = null
@@ -959,7 +1064,438 @@ func _run_single_simulation(run_index: int) -> Dictionary:
 	current_run_telemetry = {}
 	current_run_polish_telemetry = {}
 	current_polish_feedback_counts = {}
-	return summary
+
+
+func _run_scenario_probes() -> Dictionary:
+	var mode := _resolved_scenario_probe_mode()
+	var report := {
+		"enabled": mode != "off",
+		"requested_mode": str(config.get("scenario_probes", DEFAULT_SCENARIO_PROBES)),
+		"mode": mode,
+		"summary": {
+			"total": 0,
+			"completed": 0,
+			"diagnostic": 0,
+			"issues": 0,
+		},
+		"core_loop_probes": [],
+		"skill_probes": [],
+		"recipe_probes": [],
+		"quest_probes": [],
+		"combat_probes": [],
+		"economy_probes": [],
+		"inventory_probes": [],
+		"known_gaps": [],
+		"issues": [],
+	}
+	if mode == "off":
+		report["summary"]["status"] = "disabled"
+		return report
+	var probes := _scenario_probe_definitions(mode)
+	var index := 0
+	for probe in probes:
+		if _timeout_exceeded():
+			_add_report_probe_issue(report, "scenario_probe_stalled", "Scenario probe run stopped because the simulation timeout was reached.", {"probe_index": index})
+			break
+		var result = await _run_scenario_probe(probe, index)
+		if result is Dictionary:
+			_add_probe_result_to_report(report, result)
+		index += 1
+	report["summary"]["total"] = index
+	report["summary"]["issues"] = _as_array(report.get("issues", [])).size()
+	report["summary"]["status"] = "clear" if int(report["summary"]["issues"]) == 0 else "diagnostic_issues"
+	if mode == "full":
+		report["known_gaps"] = _scenario_probe_known_gaps()
+	return report
+
+
+func _scenario_probe_definitions(mode: String) -> Array:
+	var probes := [
+		{
+			"id": "core_loop_basic",
+			"bucket": "core_loop_probes",
+			"label": "Core gather-process-cook-sell loop",
+			"initial_inventory": {"bronze_axe": 1, "bronze_pickaxe": 1, "fishing_rod": 1, "logs": 2, "copper_ore": 1, "tin_ore": 1, "raw_shrimp": 1},
+			"actions": ["gather_woodcutting", "process_carpentry", "process_furnace", "process_anvil", "cook", "shop_sell"],
+			"expect": {"state_delta": true, "xp_gain": true},
+		},
+		{
+			"id": "quest_starter_path",
+			"bucket": "quest_probes",
+			"label": "Starter quest objective exercise",
+			"scenario": "quest_chaser",
+			"initial_inventory": {"bronze_axe": 1, "bronze_pickaxe": 1, "fishing_rod": 1, "coins": 20, "raw_shrimp": 1, "copper_ore": 1, "tin_ore": 1, "bronze_sword": 1},
+			"actions": ["dialogue_action", "cook", "use_item", "process_furnace", "process_anvil", "equip_item", "attack_mob", "bank_deposit", "shop_buy", "dialogue_action"],
+			"expect": {"state_delta": true, "xp_gain": true, "quest_started": true},
+		},
+		{
+			"id": "combat_loot_recovery",
+			"bucket": "combat_probes",
+			"label": "Combat, loot, and recovery",
+			"initial_inventory": {"bronze_sword": 1, "cooked_shrimp": 2},
+			"actions": ["equip_item", "attack_mob", "attack_mob", "attack_mob", "pickup_drop", "use_item"],
+			"expect": {"state_delta": true, "xp_gain": true, "mob_defeat": true},
+		},
+		{
+			"id": "economy_round_trip",
+			"bucket": "economy_probes",
+			"label": "Shop and bank round trip",
+			"initial_inventory": {"coins": 50, "logs": 2},
+			"initial_bank": {"copper_ore": 1},
+			"actions": ["open_shop", "shop_buy", "shop_sell", "open_bank", "bank_deposit", "bank_withdraw"],
+			"expect": {"state_delta": true, "coin_flow": true},
+		},
+		{
+			"id": "inventory_pressure_recovery",
+			"bucket": "inventory_probes",
+			"label": "Full inventory recovery",
+			"initial_inventory": {"bronze_axe": 1, "bronze_sword": 27},
+			"actions": ["gather_woodcutting", "drop_item", "gather_woodcutting", "bank_deposit"],
+			"expect": {"state_delta": true, "inventory_pressure": true},
+		},
+	]
+	if mode != "full":
+		return probes
+	probes.append_array(_full_scenario_probe_definitions())
+	return probes
+
+
+func _full_scenario_probe_definitions() -> Array:
+	var probes := []
+	for skill_id in ["woodcutting", "mining", "fishing"]:
+		var action := "gather_%s" % skill_id
+		probes.append({
+			"id": "skill_%s" % skill_id,
+			"bucket": "skill_probes",
+			"label": "%s gathering probe" % _display_label(skill_id),
+			"initial_inventory": {"bronze_axe": 1, "bronze_pickaxe": 1, "fishing_rod": 1},
+			"actions": [action, action],
+			"expect": {"state_delta": true, "xp_gain": true},
+		})
+	for action_type in ["smelting", "smithing", "carpentry", "herbalism"]:
+		var recipe_probe := _recipe_probe_definition(action_type)
+		if not recipe_probe.is_empty():
+			probes.append(recipe_probe)
+	for quest in _as_array(quests_data.get("quests", [])):
+		if not (quest is Dictionary):
+			continue
+		var quest_id := str(quest.get("quest_id", ""))
+		if quest_id.is_empty():
+			continue
+		probes.append({
+			"id": "quest_%s" % quest_id,
+			"bucket": "quest_probes",
+			"label": "Quest start probe: %s" % str(quest.get("display_name", quest_id)),
+			"scenario": "quest_chaser",
+			"active_quest_id": quest_id,
+			"initial_inventory": {"coins": 50, "bronze_axe": 1, "bronze_pickaxe": 1, "fishing_rod": 1, "bronze_sword": 1, "raw_shrimp": 1},
+			"actions": ["dialogue_action", "dialogue_action"],
+			"expect": {"state_delta": true, "quest_started": true},
+		})
+	for mob in mobs:
+		if not (mob is Dictionary):
+			continue
+		var mob_id := str(mob.get("id", ""))
+		if mob_id.is_empty():
+			continue
+		probes.append({
+			"id": "mob_%s" % mob_id,
+			"bucket": "combat_probes",
+			"label": "Mob combat probe: %s" % str(mob.get("label", mob_id)),
+			"target_mob_id": mob_id,
+			"initial_inventory": {"bronze_sword": 1, "cooked_shrimp": 3},
+			"actions": ["equip_item", "attack_mob", "attack_mob", "attack_mob", "pickup_drop"],
+			"expect": {"state_delta": true, "xp_gain": true},
+		})
+	return probes
+
+
+func _recipe_probe_definition(action_type: String) -> Dictionary:
+	var recipes = recipes_data.get(action_type, [])
+	if not (recipes is Array) or recipes.is_empty():
+		return {}
+	var recipe = recipes[0]
+	if not (recipe is Dictionary):
+		return {}
+	var inventory := {"bronze_axe": 1, "bronze_pickaxe": 1, "fishing_rod": 1}
+	var inputs = recipe.get("inputs", {})
+	if inputs is Dictionary:
+		for item_id in inputs.keys():
+			inventory[str(item_id)] = int(inputs[item_id])
+	var action: String = str({
+		"smelting": "process_furnace",
+		"smithing": "process_anvil",
+		"carpentry": "process_carpentry",
+		"herbalism": "process_apothecary",
+	}.get(action_type, "process_station"))
+	return {
+		"id": "recipe_%s_%s" % [action_type, str(recipe.get("recipe_id", "first"))],
+		"bucket": "recipe_probes",
+		"label": "%s recipe probe: %s" % [_display_label(action_type), str(recipe.get("display_name", recipe.get("recipe_id", "")))],
+		"initial_inventory": inventory,
+		"actions": [action],
+		"expect": {"state_delta": true, "xp_gain": true},
+	}
+
+
+func _scenario_probe_known_gaps() -> Array:
+	return [
+		"Scenario probes exercise direct gameplay APIs, not real mouse/keyboard input timing.",
+		"Scenario probes do not inspect rendered screenshots, audio timing, animation quality, or player comprehension.",
+		"Herbalism and foraging probes are limited by the current generic gather action surface unless explicit bot actions are added.",
+		"Golden smokes and save/load torture remain the pass/fail authorities; scenario probes are report-only diagnostics.",
+	]
+
+
+func _run_scenario_probe(probe: Dictionary, probe_index: int) -> Dictionary:
+	var store = await _setup_scenario_probe_context(probe, probe_index)
+	if store == null:
+		return _scenario_probe_setup_failed(probe, probe_index)
+	var issues := []
+	current_probe_issues = issues
+	scenario_probe_active = true
+	var before_digest := _state_digest()
+	var before_snapshot := _probe_state_snapshot()
+	var actions := []
+	var action_index := 0
+	for raw_action in _as_array(probe.get("actions", [])):
+		current_step = action_index
+		var requested := str(raw_action)
+		var resolved := _resolve_action_preconditions(requested, action_index)
+		var action_result := _execute_probe_action(requested, resolved, action_index)
+		actions.append(action_result)
+		action_index += 1
+	scenario_probe_active = false
+	var after_digest := _state_digest()
+	var after_snapshot := _probe_state_snapshot()
+	var result := {
+		"id": str(probe.get("id", "")),
+		"label": str(probe.get("label", probe.get("id", ""))),
+		"bucket": str(probe.get("bucket", "core_loop_probes")),
+		"mode": _resolved_scenario_probe_mode(),
+		"completed": true,
+		"diagnostic": false,
+		"actions": actions,
+		"metrics": _probe_metrics(before_snapshot, after_snapshot, before_digest != after_digest, actions),
+		"issues": current_probe_issues.duplicate(true),
+	}
+	_apply_probe_expectations(result, probe)
+	_cleanup_current_simulation_run(store)
+	current_probe_issues = []
+	return result
+
+
+func _setup_scenario_probe_context(probe: Dictionary, probe_index: int):
+	current_run_index = -1000 - probe_index
+	current_seed = int(config["seed"]) + 700000 + probe_index
+	current_scenario = str(probe.get("scenario", "scenario_probe"))
+	current_step = 0
+	current_last_actions = []
+	current_feedback_counts = {}
+	current_issue_counts = {}
+	current_issue_occurrences = 0
+	current_issue_samples = 0
+	current_no_progress_streak = 0
+	current_max_no_progress_streak = 0
+	current_run_telemetry = {}
+	current_run_polish_telemetry = {}
+	current_polish_feedback_counts = {}
+	current_rng = RandomNumberGenerator.new()
+	current_rng.seed = current_seed
+	var store = preload("res://autoload/state_store.gd").new()
+	store.save_dir = "%s/probe_saves" % str(config["output_dir"])
+	current_state = store.create_default_state("probe_%s_%d" % [str(probe.get("id", "case")), current_seed])
+	_apply_probe_initial_state(probe)
+	current_world = preload("res://scenes/world.tscn").instantiate()
+	current_hud = preload("res://scenes/hud.tscn").instantiate()
+	current_gameplay = preload("res://scripts/gameplay_core.gd").new()
+	root.add_child(current_world)
+	root.add_child(current_hud)
+	root.add_child(current_gameplay)
+	await process_frame
+	current_hud.bind_state(current_state)
+	current_world.initialize_from_state(current_state)
+	current_gameplay.setup(current_state, current_world, current_hud)
+	return store
+
+
+func _apply_probe_initial_state(probe: Dictionary) -> void:
+	current_state["inventory"] = _normalize_probe_mapping(probe.get("initial_inventory", current_state.get("inventory", {})))
+	current_state["bank"] = _normalize_probe_mapping(probe.get("initial_bank", current_state.get("bank", {})))
+	if probe.has("active_quest_id"):
+		current_state["quest_state"] = {"active_quest_id": str(probe["active_quest_id"]), "quests": {}}
+		current_state["quest_progress"] = {}
+	if probe.has("target_mob_id"):
+		current_state["probe_target_mob_id"] = str(probe["target_mob_id"])
+	var combat = current_state.get("combat", {})
+	if combat is Dictionary:
+		combat["current_hitpoints"] = int(combat.get("current_hitpoints", _skill_level("hitpoints")))
+		current_state["combat"] = combat
+
+
+func _normalize_probe_mapping(value) -> Dictionary:
+	var result := {}
+	if value is Dictionary:
+		for key in value.keys():
+			result[str(key)] = int(value[key])
+	return result
+
+
+func _scenario_probe_setup_failed(probe: Dictionary, probe_index: int) -> Dictionary:
+	return {
+		"id": str(probe.get("id", "probe_%d" % probe_index)),
+		"label": str(probe.get("label", probe.get("id", ""))),
+		"bucket": str(probe.get("bucket", "core_loop_probes")),
+		"completed": false,
+		"diagnostic": true,
+		"actions": [],
+		"metrics": {},
+		"issues": [{
+			"code": "scenario_probe_stalled",
+			"summary": "Probe setup failed.",
+			"metadata": {"probe_index": probe_index},
+		}],
+	}
+
+
+func _execute_probe_action(requested: String, resolved: String, action_index: int) -> Dictionary:
+	var before_digest := _state_digest()
+	var before_feedback := _feedback_text()
+	var before_snapshot := _probe_state_snapshot()
+	var started_usec := Time.get_ticks_usec()
+	var record := _execute_action(resolved)
+	var after_feedback := _feedback_text()
+	var after_digest := _state_digest()
+	var after_snapshot := _probe_state_snapshot()
+	record["feedback"] = after_feedback
+	record["previous_feedback"] = before_feedback
+	record["changed_state"] = before_digest != after_digest
+	record["inventory_slots"] = _inventory_slot_count(_inventory())
+	record["hitpoints"] = _current_hitpoints()
+	record["hitpoints_before"] = int(before_snapshot.get("hitpoints", 0))
+	record["damage_taken"] = max(0, int(before_snapshot.get("hitpoints", 0)) - _current_hitpoints())
+	record["healing_done"] = max(0, _current_hitpoints() - int(before_snapshot.get("hitpoints", 0)))
+	record["coin_delta"] = int(after_snapshot.get("coins", 0)) - int(before_snapshot.get("coins", 0))
+	record["elapsed_usec"] = Time.get_ticks_usec() - started_usec
+	_check_invariants(record)
+	_advance_clock_between_actions(record)
+	return {
+		"step": action_index,
+		"requested": requested,
+		"resolved": resolved,
+		"changed_state": bool(record.get("changed_state", false)),
+		"skipped": bool(record.get("skipped", false)),
+		"feedback": str(record.get("feedback", "")),
+		"target_id": str(record.get("target_id", "")),
+		"path_length": int(record.get("path_length", 0)),
+		"coin_delta": int(record.get("coin_delta", 0)),
+		"xp_delta": int(after_snapshot.get("total_xp", 0)) - int(before_snapshot.get("total_xp", 0)),
+		"mobs_defeated_delta": int(after_snapshot.get("mobs_defeated", 0)) - int(before_snapshot.get("mobs_defeated", 0)),
+	}
+
+
+func _probe_state_snapshot() -> Dictionary:
+	var quest_counts := _quest_counts()
+	return {
+		"coins": int(_inventory().get("coins", 0)),
+		"inventory_slots": _inventory_slot_count(_inventory()),
+		"bank_slots": _inventory_slot_count(_bank()),
+		"total_xp": _total_xp(),
+		"mobs_defeated": _mobs_defeated_count(),
+		"hitpoints": _current_hitpoints(),
+		"quests_started": int(quest_counts.get("started", 0)),
+		"quests_completed": int(quest_counts.get("completed", 0)),
+	}
+
+
+func _probe_metrics(before_snapshot: Dictionary, after_snapshot: Dictionary, changed_state: bool, actions: Array) -> Dictionary:
+	var changed_steps := 0
+	var skipped_steps := 0
+	var failed_feedback_steps := 0
+	var max_path_length := 0
+	for action in actions:
+		if not (action is Dictionary):
+			continue
+		if bool(action.get("changed_state", false)):
+			changed_steps += 1
+		if bool(action.get("skipped", false)):
+			skipped_steps += 1
+		if _is_failure_feedback(str(action.get("feedback", ""))):
+			failed_feedback_steps += 1
+		max_path_length = max(max_path_length, int(action.get("path_length", 0)))
+	return {
+		"changed_state": changed_state,
+		"changed_steps": changed_steps,
+		"skipped_steps": skipped_steps,
+		"failed_feedback_steps": failed_feedback_steps,
+		"max_path_length": max_path_length,
+		"xp_delta": int(after_snapshot.get("total_xp", 0)) - int(before_snapshot.get("total_xp", 0)),
+		"coin_delta": int(after_snapshot.get("coins", 0)) - int(before_snapshot.get("coins", 0)),
+		"inventory_slot_delta": int(after_snapshot.get("inventory_slots", 0)) - int(before_snapshot.get("inventory_slots", 0)),
+		"bank_slot_delta": int(after_snapshot.get("bank_slots", 0)) - int(before_snapshot.get("bank_slots", 0)),
+		"mobs_defeated_delta": int(after_snapshot.get("mobs_defeated", 0)) - int(before_snapshot.get("mobs_defeated", 0)),
+		"quests_started_delta": int(after_snapshot.get("quests_started", 0)) - int(before_snapshot.get("quests_started", 0)),
+		"quests_completed_delta": int(after_snapshot.get("quests_completed", 0)) - int(before_snapshot.get("quests_completed", 0)),
+	}
+
+
+func _apply_probe_expectations(result: Dictionary, probe: Dictionary) -> void:
+	var expect = probe.get("expect", {})
+	if not (expect is Dictionary):
+		return
+	var metrics = result.get("metrics", {})
+	if not (metrics is Dictionary):
+		return
+	if bool(expect.get("state_delta", false)) and not bool(metrics.get("changed_state", false)):
+		_add_probe_issue(result, "scenario_no_state_delta", "Probe completed without changing durable game state.")
+	if bool(expect.get("xp_gain", false)) and int(metrics.get("xp_delta", 0)) <= 0:
+		_add_probe_issue(result, "scenario_no_xp_gain", "Probe expected XP gain but none was observed.")
+	if bool(expect.get("quest_started", false)) and int(metrics.get("quests_started_delta", 0)) <= 0:
+		_add_probe_issue(result, "scenario_quest_branch_not_exercised", "Probe expected a quest start or quest branch exercise but none was observed.")
+	if bool(expect.get("mob_defeat", false)) and int(metrics.get("mobs_defeated_delta", 0)) <= 0:
+		_add_probe_issue(result, "scenario_combat_unresolved", "Probe expected at least one defeated mob but none was observed.")
+	if bool(expect.get("coin_flow", false)) and int(metrics.get("coin_delta", 0)) == 0:
+		_add_probe_issue(result, "scenario_economy_value_out_of_range", "Probe expected a coin delta from shop or bank economy actions.")
+	if bool(expect.get("inventory_pressure", false)) and int(metrics.get("skipped_steps", 0)) >= _as_array(probe.get("actions", [])).size():
+		_add_probe_issue(result, "scenario_inventory_recovery_failed", "Inventory pressure probe skipped every action.")
+	if int(metrics.get("skipped_steps", 0)) >= _as_array(probe.get("actions", [])).size():
+		_add_probe_issue(result, "scenario_probe_stalled", "Every requested probe action was skipped.")
+	result["diagnostic"] = not _as_array(result.get("issues", [])).is_empty()
+
+
+func _add_probe_issue(result: Dictionary, code: String, summary: String) -> void:
+	var issues = result.get("issues", [])
+	if not (issues is Array):
+		issues = []
+	issues.append({
+		"code": code,
+		"summary": summary,
+	})
+	result["issues"] = issues
+
+
+func _add_probe_result_to_report(report: Dictionary, result: Dictionary) -> void:
+	var bucket_name := str(result.get("bucket", "core_loop_probes"))
+	if not report.has(bucket_name) or not (report[bucket_name] is Array):
+		report[bucket_name] = []
+	report[bucket_name].append(result)
+	report["summary"]["completed"] = int(report["summary"].get("completed", 0)) + (1 if bool(result.get("completed", false)) else 0)
+	if bool(result.get("diagnostic", false)):
+		report["summary"]["diagnostic"] = int(report["summary"].get("diagnostic", 0)) + 1
+	for issue in _as_array(result.get("issues", [])):
+		if issue is Dictionary:
+			var report_issue: Dictionary = issue.duplicate(true)
+			report_issue["probe_id"] = str(result.get("id", ""))
+			report_issue["bucket"] = bucket_name
+			report["issues"].append(report_issue)
+
+
+func _add_report_probe_issue(report: Dictionary, code: String, summary: String, metadata: Dictionary = {}) -> void:
+	report["issues"].append({
+		"code": code,
+		"summary": summary,
+		"metadata": metadata,
+	})
 
 
 func _scenario_for_run(run_index: int) -> String:
@@ -1002,7 +1538,7 @@ func _choose_action(scenario: String, step: int) -> String:
 			]
 			return str(actions[step % actions.size()])
 		"combat_loot":
-			if not _ground_items().is_empty():
+			if not _first_pickable_ground_item().is_empty():
 				return "pickup_drop"
 			if _combat_recovery_needed():
 				if _has_usable_item():
@@ -1011,6 +1547,8 @@ func _choose_action(scenario: String, step: int) -> String:
 					return "bank_withdraw"
 				if not _pick_affordable_shop_usable().is_empty():
 					return "shop_buy"
+				return _non_combat_productive_action(step)
+			if _pick_mob().is_empty():
 				return _non_combat_productive_action(step)
 			return "attack_mob"
 		"inventory_pressure":
@@ -1148,6 +1686,8 @@ func _resolve_action_preconditions(action_name: String, step: int) -> String:
 				if not _pick_affordable_shop_usable().is_empty():
 					return "shop_buy"
 				return _non_combat_productive_action(step)
+			if _pick_mob().is_empty():
+				return _non_combat_productive_action(step)
 		"bank_deposit":
 			if _has_depositable_item():
 				return action_name
@@ -1189,8 +1729,10 @@ func _resolve_action_preconditions(action_name: String, step: int) -> String:
 				return action_name
 			return _non_combat_productive_action(step)
 		"pickup_drop":
-			if not _ground_items().is_empty():
+			if not _first_pickable_ground_item().is_empty():
 				return action_name
+			if not _ground_items().is_empty():
+				return _full_inventory_recovery_action(step)
 			return _non_combat_productive_action(step)
 		"cook":
 			if _has_raw_cookable():
@@ -1232,8 +1774,10 @@ func _resolve_gather_action(action_name: String, skill_id: String, step: int) ->
 
 
 func _non_combat_productive_action(step: int) -> String:
-	if not _ground_items().is_empty():
+	if not _first_pickable_ground_item().is_empty():
 		return "pickup_drop"
+	if _inventory_slot_count(_inventory()) >= INVENTORY_SLOT_LIMIT:
+		return _full_inventory_recovery_action(step)
 	if _has_useful_processing_input():
 		return "process_station"
 	if current_scenario != "quest_chaser" and _has_sellable_item():
@@ -1246,6 +1790,18 @@ func _non_combat_productive_action(step: int) -> String:
 		return "drop_item"
 	if _has_withdrawable_item():
 		return "bank_withdraw"
+	return "examine_object" if step % 5 == 0 else "talk_npc"
+
+
+func _full_inventory_recovery_action(step: int) -> String:
+	if _has_usable_item():
+		return "use_item"
+	if current_scenario != "quest_chaser" and _has_sellable_item():
+		return "shop_sell"
+	if _has_depositable_item():
+		return "bank_deposit"
+	if _has_droppable_item():
+		return "drop_item"
 	return "examine_object" if step % 5 == 0 else "talk_npc"
 
 
@@ -1275,7 +1831,7 @@ func _execute_action(action_name: String) -> Dictionary:
 		"attack_mob":
 			_interact_object(_pick_mob(), "attack", record)
 		"pickup_drop":
-			_interact_object(_first_ground_item(), "default", record)
+			_interact_object(_first_ground_item(true), "default", record)
 		"talk_npc":
 			_interact_object(_pick_npc(), "default", record)
 		"dialogue_action":
@@ -1400,9 +1956,10 @@ func _move_near_object(object_data: Dictionary, record: Dictionary) -> bool:
 func _analyze_action_result(record: Dictionary) -> void:
 	var feedback := str(record.get("feedback", ""))
 	var action_name := str(record.get("action", ""))
-	if feedback.strip_edges().is_empty():
+	var skipped := bool(record.get("skipped", false))
+	if feedback.strip_edges().is_empty() and not skipped:
 		_record_issue("qol", "P2", action_name, "Action produced no visible feedback.", feedback, {})
-	if _is_failure_feedback(feedback):
+	if _is_failure_feedback(feedback) and not skipped:
 		var feedback_key := "%s|%s" % [action_name, feedback]
 		current_feedback_counts[feedback_key] = int(current_feedback_counts.get(feedback_key, 0)) + 1
 		if int(current_feedback_counts[feedback_key]) >= 3:
@@ -1418,7 +1975,8 @@ func _analyze_action_result(record: Dictionary) -> void:
 			_record_issue("softlock", "P1", action_name, "Simulation made no state progress for several actions.", feedback, {
 				"no_progress_streak": current_no_progress_streak,
 			})
-	if _inventory_slot_count(_inventory()) >= INVENTORY_SLOT_LIMIT and not bool(record.get("changed_state", false)):
+	var lower_feedback := feedback.to_lower()
+	if _inventory_slot_count(_inventory()) >= INVENTORY_SLOT_LIMIT and not bool(record.get("changed_state", false)) and not skipped and lower_feedback.find("inventory") != -1 and lower_feedback.find("full") != -1:
 		_record_issue("qol", "P2", action_name, "Full inventory blocked the current action.", feedback, {})
 
 
@@ -1436,6 +1994,17 @@ func _check_invariants(record: Dictionary) -> void:
 
 
 func _record_issue(category: String, severity: String, action: String, summary: String, feedback: String, metadata: Dictionary) -> void:
+	if scenario_probe_active:
+		current_probe_issues.append({
+			"code": "runtime_%s_%s" % [category, severity],
+			"severity": severity,
+			"category": category,
+			"action": action,
+			"summary": summary,
+			"feedback": feedback,
+			"metadata": metadata.duplicate(true),
+		})
+		return
 	var group_key := "%s|%s|%s|%s" % [severity, category, action, summary]
 	var group = issue_groups.get(group_key, {})
 	if not (group is Dictionary) or group.is_empty():
@@ -1571,11 +2140,16 @@ func _record_polish_telemetry(record: Dictionary) -> void:
 	var action_name := str(record.get("action", "unknown"))
 	var feedback := str(record.get("feedback", "")).strip_edges()
 	var previous_feedback := str(record.get("previous_feedback", "")).strip_edges()
+	var benign_repeated_success := _is_benign_repeated_success_feedback(record, feedback, previous_feedback)
 	_add_telemetry_int(current_run_polish_telemetry, "steps", 1)
 	_increment_count(current_run_polish_telemetry["action_counts"], action_name)
+	if bool(record.get("skipped", false)):
+		return
 	if feedback.is_empty():
 		_add_polish_flag("empty_feedback", action_name, "Action produced no visible player feedback.", record)
-	if not feedback.is_empty() and feedback == previous_feedback:
+	if benign_repeated_success:
+		_record_benign_repeated_success_feedback(action_name)
+	elif not feedback.is_empty() and feedback == previous_feedback:
 		_add_polish_flag("unchanged_feedback", action_name, "Action repeated the previous feedback text.", record)
 	if _is_failure_feedback(feedback):
 		_add_telemetry_int(current_run_polish_telemetry, "failure_feedback_actions", 1)
@@ -1587,7 +2161,7 @@ func _record_polish_telemetry(record: Dictionary) -> void:
 			})
 		if not _feedback_explains_failure(feedback):
 			_add_polish_flag("failure_without_clear_reason", action_name, "Failure feedback may not explain the required recovery action.", record)
-	if bool(record.get("changed_state", false)) and (feedback.is_empty() or feedback == previous_feedback):
+	if bool(record.get("changed_state", false)) and (feedback.is_empty() or feedback == previous_feedback) and not benign_repeated_success:
 		_add_polish_flag("state_change_weak_feedback", action_name, "State changed but feedback was empty or unchanged.", record)
 	_record_panel_polish(record)
 	_record_quest_polish(record)
@@ -1653,6 +2227,37 @@ func _record_discoverability_polish(record: Dictionary) -> void:
 		_add_polish_flag("target_missing_label", str(record.get("action", "")), "Action target had no readable label.", record)
 	if target_label.is_empty() and str(record.get("feedback", "")).strip_edges().is_empty():
 		_add_polish_flag("target_missing_label_and_feedback", str(record.get("action", "")), "Action target had neither a readable label nor visible feedback.", record)
+
+
+func _is_benign_repeated_success_feedback(record: Dictionary, feedback: String, previous_feedback: String) -> bool:
+	if feedback.is_empty() or feedback != previous_feedback:
+		return false
+	if not bool(record.get("changed_state", false)):
+		return false
+	if _is_failure_feedback(feedback):
+		return false
+	var action_name := str(record.get("action", ""))
+	return action_name in [
+		"gather_resource",
+		"gather_woodcutting",
+		"gather_mining",
+		"gather_fishing",
+		"process_station",
+		"process_furnace",
+		"process_anvil",
+		"process_carpentry",
+		"process_apothecary",
+		"cook",
+		"bank_deposit",
+		"shop_sell",
+		"pickup_drop",
+	]
+
+
+func _record_benign_repeated_success_feedback(action_name: String) -> void:
+	_add_telemetry_int(current_run_polish_telemetry, "benign_repeated_success_feedback_count", 1)
+	_increment_count(current_run_polish_telemetry["benign_repeated_success_action_counts"], action_name)
+	_increment_count(current_run_polish_telemetry["benign_repeated_success_scenario_counts"], current_scenario)
 
 
 func _add_polish_flag(code: String, action: String, summary: String, record: Dictionary, metadata: Dictionary = {}) -> void:
@@ -1722,6 +2327,7 @@ func _new_polish_bucket() -> Dictionary:
 		"runs": 0,
 		"steps": 0,
 		"failure_feedback_actions": 0,
+		"benign_repeated_success_feedback_count": 0,
 		"panel_checks": 0,
 		"quest_clarity_checks": 0,
 		"quest_return_prompt_checks": 0,
@@ -1731,6 +2337,8 @@ func _new_polish_bucket() -> Dictionary:
 		"flag_counts": {},
 		"flag_action_counts": {},
 		"flag_scenario_counts": {},
+		"benign_repeated_success_action_counts": {},
+		"benign_repeated_success_scenario_counts": {},
 		"panel_type_counts": {},
 		"samples": [],
 		"scenarios": {},
@@ -1790,6 +2398,7 @@ func _merge_polish_bucket(target: Dictionary, source: Dictionary) -> void:
 		"runs",
 		"steps",
 		"failure_feedback_actions",
+		"benign_repeated_success_feedback_count",
 		"panel_checks",
 		"quest_clarity_checks",
 		"quest_return_prompt_checks",
@@ -1812,7 +2421,7 @@ func _merge_polish_bucket(target: Dictionary, source: Dictionary) -> void:
 	]
 	for key in sum_keys:
 		target[key] = int(target.get(key, 0)) + int(source.get(key, 0))
-	for count_key in ["action_counts", "flag_counts", "flag_action_counts", "flag_scenario_counts", "panel_type_counts"]:
+	for count_key in ["action_counts", "flag_counts", "flag_action_counts", "flag_scenario_counts", "benign_repeated_success_action_counts", "benign_repeated_success_scenario_counts", "panel_type_counts"]:
 		var target_counts = target.get(count_key, {})
 		if not (target_counts is Dictionary):
 			target_counts = {}
@@ -1877,6 +2486,8 @@ func _finalize_polish_bucket(bucket: Dictionary, top_limit: int) -> Dictionary:
 	report["top_flags"] = _top_count_entries(report.get("flag_counts", {}), top_limit)
 	report["top_flag_actions"] = _top_count_entries(report.get("flag_action_counts", {}), top_limit)
 	report["top_flag_scenarios"] = _top_count_entries(report.get("flag_scenario_counts", {}), top_limit)
+	report["top_benign_repeated_success_actions"] = _top_count_entries(report.get("benign_repeated_success_action_counts", {}), top_limit)
+	report["top_benign_repeated_success_scenarios"] = _top_count_entries(report.get("benign_repeated_success_scenario_counts", {}), top_limit)
 	report["panel_types_checked"] = _top_count_entries(report.get("panel_type_counts", {}), top_limit)
 	var samples = report.get("samples", [])
 	if samples is Array and samples.size() > top_limit:
@@ -2058,6 +2669,395 @@ func _update_polish_telemetry_summary(run_summary: Dictionary) -> void:
 	polish_telemetry_summary["scenarios"] = scenarios
 
 
+func _simulation_scorecard() -> Dictionary:
+	var telemetry := _telemetry_report(10)
+	var polish := _polish_report(10)
+	var balance := _balance_profile_report(10)
+	var performance := _performance_report(10)
+	var severity_counts := _issue_counts_by_severity()
+	var category_counts := _issue_counts_by_category()
+	var probe_summary = scenario_probe_report.get("summary", {}) if scenario_probe_report is Dictionary else {}
+	if not (probe_summary is Dictionary):
+		probe_summary = {}
+	var issue_penalty := _score_issue_penalty(severity_counts)
+	var probe_issues := int(probe_summary.get("issues", 0))
+	var performance_penalty := 5.0 if str(performance.get("status", "ok")) != "ok" else 0.0
+	var clean_run_rate := float(balance.get("clean_run_rate", 0.0))
+	var state_changed_rate := float(balance.get("state_changed_rate", 0.0))
+	var average_xp := float(balance.get("average_total_xp", 0.0))
+	var average_net_worth := float(balance.get("average_net_worth", 0.0))
+	var average_mobs_defeated := float(balance.get("average_mobs_defeated", 0.0))
+	var quest_completion_rate := float(balance.get("quest_completion_rate", 0.0))
+	var combat_survival_rate := float(balance.get("combat_survival_rate", 0.0))
+	var telemetry_steps: int = max(1, int(telemetry.get("steps", 0)))
+	var full_inventory_step_rate := float(telemetry.get("full_inventory_steps", 0)) / float(telemetry_steps)
+	var failed_feedback_action_rate := float(telemetry.get("failed_feedback_actions", 0)) / float(telemetry_steps)
+	var no_feedback_action_rate := float(telemetry.get("no_feedback_actions", 0)) / float(telemetry_steps)
+	var polish_flag_rate := float(polish.get("flag_rate", 0.0))
+	var scenario_no_progress_rate := _scenario_no_progress_rate()
+	var scorecard := {
+		"type": "advisory_scorecard",
+		"scoring_range": "0-100",
+		"score_meaning": "Higher means this automated run produced stronger evidence for that category. Scores are advisory simulation signals, not proof of fun, balance, visual quality, or release readiness.",
+		"overall_score": 0,
+		"weakest_category": {},
+		"categories": {},
+		"relevant_metrics": {
+			"runs": run_summaries.size(),
+			"steps_per_run": int(config.get("steps", 0)),
+			"issue_occurrences": issue_occurrence_count,
+			"issue_groups": issue_groups.size(),
+			"counts_by_severity": severity_counts,
+			"counts_by_category": category_counts,
+			"scenario_probe_mode": str(scenario_probe_report.get("mode", "off")) if scenario_probe_report is Dictionary else "off",
+			"scenario_probe_issues": probe_issues,
+			"clean_run_rate": clean_run_rate,
+			"state_changed_rate": state_changed_rate,
+			"quest_completion_rate": quest_completion_rate,
+			"average_total_xp": average_xp,
+			"average_net_worth": average_net_worth,
+			"average_mobs_defeated": average_mobs_defeated,
+			"combat_survival_rate": combat_survival_rate,
+			"full_inventory_step_rate": full_inventory_step_rate,
+			"failed_feedback_action_rate": failed_feedback_action_rate,
+			"no_feedback_action_rate": no_feedback_action_rate,
+			"polish_flag_rate": polish_flag_rate,
+			"slow_action_rate": float(performance.get("slow_action_rate", 0.0)),
+			"average_action_cost_usec": float(performance.get("average_action_cost_usec", 0.0)),
+			"average_path_length": float(performance.get("average_path_length", 0.0)),
+		},
+	}
+	var categories := {}
+	categories["runtime_gameplay_bugs"] = _scorecard_category(
+		"Runtime/gameplay bugs",
+		_bounded_score(100.0 - issue_penalty - float(probe_issues * 3) - performance_penalty),
+		"high",
+		{
+			"issue_occurrences": issue_occurrence_count,
+			"issue_groups": issue_groups.size(),
+			"severity_counts": severity_counts,
+			"scenario_probe_issues": probe_issues,
+			"performance_status": str(performance.get("status", "ok")),
+		},
+		"Penalizes grouped findings, probe diagnostics, and advisory performance over-budget observations."
+	)
+	categories["core_grind_loop"] = _scorecard_category(
+		"Core grind loop",
+		_bounded_score((state_changed_rate * 35.0) + (_target_score(average_xp, 60.0) * 0.20) + (_target_score(float(telemetry.get("coin_gained", 0)), 75.0) * 0.15) + (clean_run_rate * 20.0) + ((1.0 - scenario_no_progress_rate) * 10.0) - (issue_penalty * 0.25)),
+		"medium-high",
+		{
+			"state_changed_rate": state_changed_rate,
+			"average_total_xp": average_xp,
+			"coin_gained": int(telemetry.get("coin_gained", 0)),
+			"clean_run_rate": clean_run_rate,
+			"scenario_no_progress_rate": scenario_no_progress_rate,
+		},
+		"Rewards state changes, XP, coin flow, clean runs, and low no-progress rates."
+	)
+	categories["skill_progression"] = _scorecard_category(
+		"Skill progression",
+		_bounded_score((_target_score(average_xp, 100.0) * 0.55) + (_target_score(float(_top_count_total(balance.get("top_xp_skills", []))), 3.0) * 0.25) + (clean_run_rate * 20.0) - float(_probe_issue_count_matching(["scenario_no_xp_gain"]) * 10)),
+		"medium",
+		{
+			"average_total_xp": average_xp,
+			"top_xp_skills": balance.get("top_xp_skills", []),
+			"scenario_no_xp_gain_probe_issues": _probe_issue_count_matching(["scenario_no_xp_gain"]),
+		},
+		"Rewards XP gain and multi-skill coverage; penalizes explicit no-XP probe diagnostics."
+	)
+	categories["quest_flow"] = _scorecard_category(
+		"Quest flow",
+		_bounded_score(35.0 + (quest_completion_rate * 45.0) + (_target_score(float(balance.get("started_quests", 0)), 3.0) * 0.10) + (_target_score(float(balance.get("completed_quests", 0)), 2.0) * 0.10) - float(_issue_count_matching(category_counts, ["quest", "softlock"]) * 8) - float(_probe_issue_count_matching(["quest"]) * 8)),
+		"medium",
+		{
+			"started_quests": int(balance.get("started_quests", 0)),
+			"completed_quests": int(balance.get("completed_quests", 0)),
+			"quest_completion_rate": quest_completion_rate,
+			"quest_or_softlock_issue_count": _issue_count_matching(category_counts, ["quest", "softlock"]),
+			"quest_probe_issue_count": _probe_issue_count_matching(["quest"]),
+		},
+		"Rewards started and completed quests; penalizes quest, softlock, and quest-probe findings."
+	)
+	categories["economy_bank_shop"] = _scorecard_category(
+		"Economy/bank/shop",
+		_bounded_score(30.0 + (_target_score(float(telemetry.get("coin_gained", 0)) + float(telemetry.get("coin_spent", 0)), 100.0) * 0.30) + (_target_score(average_net_worth, 150.0) * 0.25) + (state_changed_rate * 15.0) - float(_issue_count_matching(category_counts, ["economy", "shop", "bank"]) * 8) - float(_probe_issue_count_matching(["economy"]) * 8)),
+		"medium-high",
+		{
+			"coin_gained": int(telemetry.get("coin_gained", 0)),
+			"coin_spent": int(telemetry.get("coin_spent", 0)),
+			"average_net_worth": average_net_worth,
+			"economy_issue_count": _issue_count_matching(category_counts, ["economy", "shop", "bank"]),
+			"economy_probe_issue_count": _probe_issue_count_matching(["economy"]),
+		},
+		"Rewards coin flow and net worth; penalizes economy, shop, bank, and economy-probe findings."
+	)
+	categories["combat_loot_recovery"] = _scorecard_category(
+		"Combat/loot/recovery",
+		_bounded_score(30.0 + (combat_survival_rate * 25.0) + (_target_score(average_mobs_defeated, 3.0) * 0.25) + (_target_score(float(balance.get("ground_drop_count", 0)), 3.0) * 0.10) + (_target_score(float(telemetry.get("healing_done", 0)), 20.0) * 0.10) - float(int(balance.get("deaths", 0)) * 8) - float(_issue_count_matching(category_counts, ["combat", "loot", "death"]) * 8) - float(_probe_issue_count_matching(["combat"]) * 8)),
+		"medium",
+		{
+			"combat_survival_rate": combat_survival_rate,
+			"deaths": int(balance.get("deaths", 0)),
+			"average_mobs_defeated": average_mobs_defeated,
+			"ground_drop_count": int(balance.get("ground_drop_count", 0)),
+			"healing_done": int(telemetry.get("healing_done", 0)),
+			"combat_probe_issue_count": _probe_issue_count_matching(["combat"]),
+		},
+		"Rewards survival, mob defeats, drops, and recovery signals; penalizes deaths and combat findings."
+	)
+	categories["inventory_pressure"] = _scorecard_category(
+		"Inventory pressure",
+		_bounded_score(100.0 - (full_inventory_step_rate * 250.0) - float(_issue_count_matching(category_counts, ["inventory"]) * 8) - float(_probe_issue_count_matching(["inventory"]) * 8) - (issue_penalty * 0.10)),
+		"medium-high",
+		{
+			"full_inventory_steps": int(telemetry.get("full_inventory_steps", 0)),
+			"full_inventory_step_rate": full_inventory_step_rate,
+			"inventory_issue_count": _issue_count_matching(category_counts, ["inventory"]),
+			"inventory_probe_issue_count": _probe_issue_count_matching(["inventory"]),
+		},
+		"Starts high and penalizes full-inventory friction plus inventory-specific findings."
+	)
+	categories["ui_action_feedback"] = _scorecard_category(
+		"UI/action feedback",
+		_bounded_score(100.0 - (polish_flag_rate * 250.0) - (failed_feedback_action_rate * 250.0) - (no_feedback_action_rate * 120.0) - float(_issue_count_matching(category_counts, ["feedback", "ui", "polish"]) * 8)),
+		"medium",
+		{
+			"polish_flag_rate": polish_flag_rate,
+			"sampled_polish_flags": int(polish.get("sampled_flags", 0)),
+			"failed_feedback_action_rate": failed_feedback_action_rate,
+			"no_feedback_action_rate": no_feedback_action_rate,
+			"top_flags": polish.get("top_flags", []),
+		},
+		"Penalizes polish flags, failed feedback actions, no-feedback actions, and feedback/UI findings."
+	)
+	categories["visual_audio_confidence"] = _scorecard_category(
+		"Visual/audio confidence",
+		25,
+		"low",
+		{
+			"headless_run": true,
+			"screenshot_review_present": false,
+			"manual_review_required": true,
+		},
+		"Headless simulation cannot prove visuals, animation, audio, contrast, clipping, or fun. Add screenshot review to raise this score."
+	)
+	var playable_components := [
+		float(categories["runtime_gameplay_bugs"].get("score", 0)),
+		float(categories["core_grind_loop"].get("score", 0)),
+		float(categories["skill_progression"].get("score", 0)),
+		float(categories["quest_flow"].get("score", 0)),
+		float(categories["economy_bank_shop"].get("score", 0)),
+		float(categories["combat_loot_recovery"].get("score", 0)),
+		float(categories["inventory_pressure"].get("score", 0)),
+		float(categories["ui_action_feedback"].get("score", 0)),
+		float(categories["visual_audio_confidence"].get("score", 0)),
+	]
+	categories["full_playable_game_confidence"] = _scorecard_category(
+		"Full playable game confidence",
+		_bounded_score(_average_float(playable_components)),
+		"medium-low",
+		{
+			"component_scores": _scorecard_component_scores(categories),
+			"manual_playtest_required": true,
+		},
+		"Average of automated category signals, deliberately capped by the low visual/audio lane until screenshots or manual review are added."
+	)
+	scorecard["categories"] = categories
+	scorecard["overall_score"] = _bounded_score(_average_float(playable_components))
+	scorecard["weakest_category"] = _weakest_scorecard_category(categories)
+	return _normalize_value(scorecard)
+
+
+func _scorecard_category(label: String, score: int, confidence: String, metrics: Dictionary, basis: String) -> Dictionary:
+	return {
+		"label": label,
+		"score": _bounded_score(float(score)),
+		"confidence": confidence,
+		"metrics": _normalize_value(metrics),
+		"basis": basis,
+	}
+
+
+func _scorecard_category_order() -> Array:
+	return [
+		"runtime_gameplay_bugs",
+		"core_grind_loop",
+		"skill_progression",
+		"quest_flow",
+		"economy_bank_shop",
+		"combat_loot_recovery",
+		"inventory_pressure",
+		"ui_action_feedback",
+		"visual_audio_confidence",
+		"full_playable_game_confidence",
+	]
+
+
+func _bounded_score(value: float) -> int:
+	return int(clamp(round(value), 0.0, 100.0))
+
+
+func _target_score(value: float, target: float) -> float:
+	if target <= 0.0:
+		return 0.0
+	return clamp(value / target, 0.0, 1.0) * 100.0
+
+
+func _average_float(values: Array) -> float:
+	if values.is_empty():
+		return 0.0
+	var total := 0.0
+	for value in values:
+		total += float(value)
+	return total / float(values.size())
+
+
+func _issue_counts_by_category() -> Dictionary:
+	var counts := {}
+	for group in issue_groups.values():
+		if not (group is Dictionary):
+			continue
+		var category := str(group.get("category", "unknown"))
+		counts[category] = int(counts.get(category, 0)) + int(group.get("count", 0))
+	return _normalize_value(counts)
+
+
+func _issue_counts_by_severity() -> Dictionary:
+	var counts := {}
+	for group in issue_groups.values():
+		if not (group is Dictionary):
+			continue
+		var severity := str(group.get("severity", "unknown"))
+		counts[severity] = int(counts.get(severity, 0)) + int(group.get("count", 0))
+	return _normalize_value(counts)
+
+
+func _score_issue_penalty(severity_counts: Dictionary) -> float:
+	var runs: float = max(1.0, float(run_summaries.size()))
+	var raw := (float(severity_counts.get("P0", 0)) * 35.0) + (float(severity_counts.get("P1", 0)) * 20.0) + (float(severity_counts.get("P2", 0)) * 8.0) + (float(severity_counts.get("P3", 0)) * 3.0) + (float(severity_counts.get("unknown", 0)) * 5.0)
+	return min(80.0, raw / sqrt(runs))
+
+
+func _issue_count_matching(category_counts: Dictionary, keywords: Array) -> int:
+	var total := 0
+	for category in category_counts.keys():
+		var text := str(category).to_lower()
+		for keyword in keywords:
+			if text.find(str(keyword).to_lower()) >= 0:
+				total += int(category_counts[category])
+				break
+	return total
+
+
+func _probe_issue_count_matching(keywords: Array) -> int:
+	if not (scenario_probe_report is Dictionary):
+		return 0
+	var issues = scenario_probe_report.get("issues", [])
+	if not (issues is Array):
+		return 0
+	var total := 0
+	for issue in issues:
+		if not (issue is Dictionary):
+			continue
+		var text := "%s %s" % [str(issue.get("code", "")).to_lower(), str(issue.get("summary", "")).to_lower()]
+		for keyword in keywords:
+			if text.find(str(keyword).to_lower()) >= 0:
+				total += 1
+				break
+	return total
+
+
+func _scenario_no_progress_rate() -> float:
+	var runs := 0
+	var no_progress_runs := 0
+	for scenario in scenario_metrics.keys():
+		var metrics = scenario_metrics[scenario]
+		if not (metrics is Dictionary):
+			continue
+		runs += int(metrics.get("runs", 0))
+		no_progress_runs += int(metrics.get("no_progress_runs", 0))
+	return float(no_progress_runs) / float(runs) if runs > 0 else 0.0
+
+
+func _top_count_total(entries) -> int:
+	if not (entries is Array):
+		return 0
+	var total := 0
+	for entry in entries:
+		if entry is Dictionary:
+			total += int(entry.get("count", 0))
+	return total
+
+
+func _scorecard_component_scores(categories: Dictionary) -> Dictionary:
+	var scores := {}
+	for key in _scorecard_category_order():
+		if key == "full_playable_game_confidence":
+			continue
+		var category = categories.get(key, {})
+		if category is Dictionary:
+			scores[key] = int(category.get("score", 0))
+	return scores
+
+
+func _weakest_scorecard_category(categories: Dictionary) -> Dictionary:
+	var weakest_key := ""
+	var weakest_score := 101
+	var weakest_label := ""
+	for key in _scorecard_category_order():
+		var category = categories.get(key, {})
+		if not (category is Dictionary):
+			continue
+		var score := int(category.get("score", 0))
+		if score < weakest_score:
+			weakest_key = key
+			weakest_score = score
+			weakest_label = str(category.get("label", key))
+	return {
+		"key": weakest_key,
+		"label": weakest_label,
+		"score": max(0, weakest_score),
+	}
+
+
+func _append_scorecard_lines(lines: Array, scorecard: Dictionary, include_metrics: bool = false) -> void:
+	lines.append("## Advisory Category Scores")
+	lines.append("")
+	lines.append("Scores are `0-100` advisory automation signals from this run, not proof of fun, visual quality, or release readiness.")
+	lines.append("")
+	var categories = scorecard.get("categories", {})
+	if categories is Dictionary:
+		for key in _scorecard_category_order():
+			var category = categories.get(key, {})
+			if not (category is Dictionary):
+				continue
+			lines.append("- `%s`: `%d`/100, confidence `%s`." % [
+				str(category.get("label", key)),
+				int(category.get("score", 0)),
+				str(category.get("confidence", "")),
+			])
+	var weakest = scorecard.get("weakest_category", {})
+	if weakest is Dictionary and not str(weakest.get("key", "")).is_empty():
+		lines.append("- Weakest category: `%s` at `%d`/100." % [
+			str(weakest.get("label", "")),
+			int(weakest.get("score", 0)),
+		])
+	if include_metrics:
+		var metrics = scorecard.get("relevant_metrics", {})
+		if metrics is Dictionary:
+			lines.append("- Key metrics: issues `%d`, probe issues `%d`, clean run rate `%.2f`, state changed rate `%.2f`, quest completion rate `%.2f`, average XP `%.1f`, average net worth `%.1f`, polish flag rate `%.3f`." % [
+				int(metrics.get("issue_occurrences", 0)),
+				int(metrics.get("scenario_probe_issues", 0)),
+				float(metrics.get("clean_run_rate", 0.0)),
+				float(metrics.get("state_changed_rate", 0.0)),
+				float(metrics.get("quest_completion_rate", 0.0)),
+				float(metrics.get("average_total_xp", 0.0)),
+				float(metrics.get("average_net_worth", 0.0)),
+				float(metrics.get("polish_flag_rate", 0.0)),
+			])
+	lines.append("")
+
+
 func _write_summary_file() -> void:
 	var counts_by_category := {}
 	var counts_by_severity := {}
@@ -2084,6 +3084,7 @@ func _write_summary_file() -> void:
 	}
 	if str(config["trace"]) == "all":
 		output_files["trace"] = "%s/trace.jsonl" % str(config["output_dir"])
+	var scorecard := _simulation_scorecard()
 	var summary := {
 		"type": "summary",
 		"replay_metadata": replay_metadata,
@@ -2095,6 +3096,7 @@ func _write_summary_file() -> void:
 			"scenario_mix": _scenario_mix(),
 			"trace": str(config["trace"]),
 			"balance_profile": str(config["balance_profile"]),
+			"scenario_probes": str(config["scenario_probes"]),
 			"output_dir": str(config["output_dir"]),
 			"timeout_seconds": float(config["timeout_seconds"]),
 			"fail_on_issues": bool(config["fail_on_issues"]),
@@ -2105,6 +3107,7 @@ func _write_summary_file() -> void:
 		"issue_occurrences": issue_occurrence_count,
 		"issue_samples": issue_sample_count,
 		"issue_groups": issue_groups.size(),
+		"issue_group_details": _normalize_value(issue_groups),
 		"counts_by_category": _normalize_value(counts_by_category),
 		"counts_by_severity": _normalize_value(counts_by_severity),
 		"scenario_metrics": _normalize_value(scenario_metrics),
@@ -2112,6 +3115,8 @@ func _write_summary_file() -> void:
 		"polish": _polish_report(10),
 		"balance": _balance_profile_report(10),
 		"performance": _performance_report(10),
+		"scenario_probes": _normalize_value(scenario_probe_report),
+		"scorecard": scorecard,
 		"output_files": output_files,
 		"replay_guidance": {
 			"source": "Use issue sample replay_command values from issues.jsonl for deterministic reproduction.",
@@ -2354,7 +3359,7 @@ func _write_improvement_plan() -> void:
 	lines.append("- Scenario setting: `%s`; scenario mix: `%s`." % [str(config["scenario"]), ", ".join(_scenario_mix())])
 	lines.append("- Balance profile: `%s` - %s" % [str(config["balance_profile"]), str(_balance_profile_definition().get("focus", ""))])
 	lines.append("- Trace mode: `%s`; output directory: `%s`." % [str(config["trace"]), str(config["output_dir"])])
-	lines.append("- Timeout: `%s` seconds; fail on issues: `%s`." % [str(config["timeout_seconds"]), str(config["fail_on_issues"])])
+	lines.append("- Timeout: `%s`; fail on issues: `%s`." % [_timeout_text(), str(config["fail_on_issues"])])
 	lines.append("- Trust: run strength `%s`, coverage `%s`, implementation ready `%s`, latest publish status `%s`." % [
 		str(trust_context.get("run_strength", "")),
 		str(trust_context.get("coverage_scope", "")),
@@ -2402,8 +3407,24 @@ func _write_improvement_plan() -> void:
 		float(polish.get("empty_feedback_rate", 0.0)),
 		float(polish.get("unchanged_feedback_rate", 0.0)),
 	])
+	var probes = scenario_probe_report.get("summary", {}) if scenario_probe_report is Dictionary else {}
+	lines.append("- Scenario probes: mode `%s`, status `%s`, completed `%d`, diagnostic probes `%d`, issues `%d`." % [
+		str(scenario_probe_report.get("mode", "off")) if scenario_probe_report is Dictionary else "off",
+		str(probes.get("status", "")) if probes is Dictionary else "",
+		int(probes.get("completed", 0)) if probes is Dictionary else 0,
+		int(probes.get("diagnostic", 0)) if probes is Dictionary else 0,
+		int(probes.get("issues", 0)) if probes is Dictionary else 0,
+	])
+	var scorecard := _simulation_scorecard()
+	var weakest = scorecard.get("weakest_category", {})
+	lines.append("- Advisory scorecard: overall `%d`/100; weakest `%s` `%d`/100." % [
+		int(scorecard.get("overall_score", 0)),
+		str(weakest.get("label", "")) if weakest is Dictionary else "",
+		int(weakest.get("score", 0)) if weakest is Dictionary else 0,
+	])
 	lines.append("- Treat findings as evidence candidates. Verify issue samples against current code and data before changing gameplay.")
 	lines.append("")
+	_append_scorecard_lines(lines, scorecard, true)
 	lines.append("## Replay Guidance")
 	lines.append("")
 	lines.append("- Use the replay command embedded in each `issues.jsonl` sample to rerun the same seed, scenario, and step count.")
@@ -2412,6 +3433,7 @@ func _write_improvement_plan() -> void:
 	lines.append("- Use `balance_profiles.json` for profile-specific economy, progression, combat, loot, and dominant-action signals.")
 	lines.append("- Use `performance_observations.json` for advisory action-cost and path-cost signals; it is not a failing gate.")
 	lines.append("- Use `polish_telemetry.json` and `manual_polish_review.md` for advisory player-facing clarity, UI, feedback, and human-only review prompts.")
+	lines.append("- Use `summary.json` `scenario_probes` for deterministic report-only coverage diagnostics; probe findings are not pass/fail gates.")
 	lines.append("- When an issue sample includes `snapshot_path`, inspect that JSON-safe state snapshot before changing gameplay.")
 	lines.append("- Hash verification: compare `build_hash`, all `data_hashes`, and all `script_hashes` before using replay to close or dismiss an issue.")
 	lines.append("- If any hash differs, replay is under changed code and cannot close the original issue by itself.")
@@ -2493,16 +3515,10 @@ func _write_codex_prompt() -> void:
 	lines.append("")
 	lines.append("## Source Evidence")
 	lines.append("")
-	lines.append("- Read `%s` first for the ranked findings." % _display_output_path("improvement_plan.md"))
-	lines.append("- Read `%s` for replayable samples." % _display_output_path("issues.jsonl"))
-	lines.append("- Read `%s` and `%s` for aggregate metrics." % [_display_output_path("runs.jsonl"), _display_output_path("summary.json")])
-	lines.append("- Read `%s` for build hash, data hashes, scenario mix, run seeds, and output paths." % _display_output_path("replay_manifest.json"))
-	lines.append("- Read `%s` for local telemetry: deaths, damage taken, failed feedback, economy flow, action cost samples, and tile hot spots." % _display_output_path("telemetry_summary.json"))
-	lines.append("- Read `%s` for profile-specific economy, progression, combat, loot, and dominant-action signals." % _display_output_path("balance_profiles.json"))
-	lines.append("- Read `%s` for advisory action-cost and path-cost signals before doing performance work." % _display_output_path("performance_observations.json"))
-	lines.append("- Read `%s` for advisory UI, feedback, quest clarity, and discoverability signals." % _display_output_path("polish_telemetry.json"))
-	lines.append("- Read `%s` for human-only review prompts around visuals, animation feel, audio, pacing, and confusion." % _display_output_path("manual_polish_review.md"))
-	lines.append("- Replay representative issues with the commands embedded in each issue sample before implementing risky fixes.")
+	lines.append("- This prompt is the single Markdown handoff for the run. Use it first for planning and implementation.")
+	lines.append("- If this prompt was published to `.godot\\ai_simulation`, use the same-timestamp `.json` file next to it for structured details.")
+	lines.append("- Do not use `.godot\\ai_simulation\\_working\\current` as public evidence after a later run; it is a disposable working folder.")
+	lines.append("- Replay representative issues with the commands embedded below before implementing risky fixes.")
 	lines.append("- Hash verification: compare `build_hash`, all `data_hashes`, and all `script_hashes` before using replay to close or dismiss an issue.")
 	lines.append("- If any hash differs, replay is under changed code and cannot close the original issue by itself.")
 	lines.append("")
@@ -2514,9 +3530,13 @@ func _write_codex_prompt() -> void:
 	lines.append("- Scenario setting: `%s`" % str(config["scenario"]))
 	lines.append("- Scenario mix: `%s`" % ", ".join(_scenario_mix()))
 	lines.append("- Balance profile: `%s`" % str(config["balance_profile"]))
+	lines.append("- Scenario probes: requested `%s`, resolved `%s`." % [
+		str(config["scenario_probes"]),
+		str(scenario_probe_report.get("mode", "off")) if scenario_probe_report is Dictionary else "off",
+	])
 	lines.append("- Trace mode: `%s`" % str(config["trace"]))
 	lines.append("- Output directory: `%s`" % output_dir)
-	lines.append("- Timeout seconds: `%s`" % str(config["timeout_seconds"]))
+	lines.append("- Timeout: `%s`" % _timeout_text())
 	lines.append("- Fail on issues: `%s`" % str(config["fail_on_issues"]))
 	lines.append("- Issue occurrences: `%d`" % issue_occurrence_count)
 	lines.append("- Grouped findings: `%d`" % issue_groups.size())
@@ -2532,33 +3552,26 @@ func _write_codex_prompt() -> void:
 			str(trust_context.get("previous_latest_created_at", "")),
 		])
 	lines.append("")
+	_append_scorecard_lines(lines, _simulation_scorecard(), true)
 	lines.append("## Generated Artifacts")
 	lines.append("")
-	lines.append("- `%s`" % _display_output_path("runs.jsonl"))
-	lines.append("- `%s`" % _display_output_path("issues.jsonl"))
-	lines.append("- `%s`" % _display_output_path("summary.json"))
-	lines.append("- `%s`" % _display_output_path("replay_manifest.json"))
-	lines.append("- `%s`" % _display_output_path("telemetry_summary.json"))
-	lines.append("- `%s`" % _display_output_path("balance_profiles.json"))
-	lines.append("- `%s`" % _display_output_path("performance_observations.json"))
-	lines.append("- `%s`" % _display_output_path("polish_telemetry.json"))
-	lines.append("- `%s`" % _display_output_path("manual_polish_review.md"))
-	lines.append("- `%s`" % _display_output_path("improvement_plan.md"))
-	lines.append("- `%s`" % _display_output_path("codex_prompt.md"))
-	if str(config["trace"]) == "all":
-		lines.append("- `%s`" % _display_output_path("trace.jsonl"))
+	lines.append("- Public publish writes one timestamped Codex prompt Markdown and one same-timestamp JSON summary under `.godot\\ai_simulation`.")
+	lines.append("- Internal detailed reports for this run were written to `%s` and archived under `.godot\\ai_simulation\\archive` when publishing succeeds." % output_dir)
+	lines.append("- The JSON summary includes trust labels, replay metadata, issue group details, advisory 0-100 category scores, relevant metrics, telemetry, polish signals, balance signals, performance observations, scenario metrics, scenario probe diagnostics, and output file paths.")
 	lines.append("")
 	lines.append("## Implementation Instructions")
 	lines.append("")
 	lines.append("- Preserve unrelated dirty worktree changes. Do not revert, stage, commit, or push unless explicitly asked.")
 	lines.append("- Keep changes small, Godot-native, and data-driven where practical.")
 	lines.append("- Keep bot-owned work in `scripts/playtest_simulation_runner.gd` and its generated reports: deterministic replay metadata, chaos behavior, simulation-step invariant calls, telemetry summaries, balance profiles, polish telemetry, failed-run state summaries, and advisory simulation performance observations.")
+	lines.append("- Treat `scenario_probes` as deterministic report-only diagnostics that improve coverage visibility but do not replace focused smokes or manual playtesting.")
 	lines.append("- Keep validators, golden smokes, save/load torture smokes, debug console commands, and debug overlays independently runnable outside the simulation bot.")
 	lines.append("- Put shared logic such as invariants or future snapshots in reusable helpers instead of burying it only inside the runner.")
 	lines.append("- Fix P0/P1 findings first, then P2 QOL friction if the fix is clear and low risk.")
 	lines.append("- If a finding is caused by a weak simulation heuristic rather than game behavior, improve `scripts/playtest_simulation_runner.gd` classification or bot logic instead of changing gameplay.")
 	lines.append("- Favor player-facing improvements that reduce repeated failed actions: clearer feedback, recovery paths, better gating, inventory relief, and safer combat/quest flow.")
 	lines.append("- Treat polish telemetry as advisory. Use manual review prompts for visual quality, animation feel, audio, fun, and player confusion before making subjective changes.")
+	lines.append("- Preserve original Hearthvale names, assets, formulas, and progression language; do not copy proprietary or near-branded inspiration-game content.")
 	lines.append("- Avoid Python/Panda3D workflow changes and do not touch normal user saves.")
 	lines.append("- Treat simulation findings as evidence candidates, not proof. Verify each candidate against current code, data, and deterministic replay before changing gameplay.")
 	lines.append("")
@@ -2597,6 +3610,15 @@ func _write_codex_prompt() -> void:
 	lines.append("- Explain which findings were fixed, which were reclassified as simulation noise, and which remain.")
 	lines.append("- Run the smallest relevant smoke checks plus the playtest simulation runner.")
 	lines.append("- Include exact commands and pass/fail results in the final response.")
+	lines.append("")
+	lines.append("## Manual Polish Review")
+	lines.append("")
+	lines.append("- Check start screen readability, empty-name behavior, and first-action clarity.")
+	lines.append("- Check HUD hierarchy, feedback visibility, inventory/equipment clarity, and quest objective clarity.")
+	lines.append("- Check bank/shop transaction feedback and failure explanations.")
+	lines.append("- Check combat feedback, low-health/death recovery, drops, status effects, and whether visible state changes match outcomes.")
+	lines.append("- Check gathering/crafting responsiveness, resource depletion, level/tool requirements, XP, and unlock feedback.")
+	lines.append("- Check minimap/camera readability, destination cues, selected target cues, and long/blocked path clarity.")
 	lines.append("")
 	lines.append("## Suggested Verification Commands")
 	lines.append("")
@@ -2714,6 +3736,7 @@ func _build_replay_metadata() -> Dictionary:
 		"scenario_mix": scenario_mix,
 		"balance_profile": str(config["balance_profile"]),
 		"balance_profile_definition": _balance_profile_definition(),
+		"scenario_probes": str(config["scenario_probes"]),
 		"trace": str(config["trace"]),
 		"output_dir": str(config["output_dir"]),
 		"publish_latest": bool(config.get("publish_latest", false)),
@@ -2972,16 +3995,30 @@ func _pick_mob() -> Dictionary:
 	for mob in mobs:
 		if not (mob is Dictionary):
 			continue
-		var state_for_mob = mob_states.get(str(mob.get("id", "")), {})
-		if state_for_mob is Dictionary and bool(state_for_mob.get("dead", false)):
+		if _mob_is_dead_for_sim(mob, mob_states):
 			continue
 		alive.append(mob)
-	if alive.is_empty():
-		alive = mobs.duplicate(true)
+	var probe_target := str(current_state.get("probe_target_mob_id", ""))
+	if not probe_target.is_empty():
+		for mob in alive:
+			if mob is Dictionary and str(mob.get("id", "")) == probe_target:
+				return mob
 	alive.sort_custom(func(left, right) -> bool: return int(left.get("level", 1)) < int(right.get("level", 1)))
 	if current_scenario == "random_guard" and current_rng.randf() < 0.35:
 		return _random_entry(alive, {})
 	return alive[0] if not alive.is_empty() else {}
+
+
+func _mob_is_dead_for_sim(mob: Dictionary, mob_states: Dictionary) -> bool:
+	var mob_id := str(mob.get("id", ""))
+	var state_for_mob = mob_states.get(mob_id, {})
+	if not (state_for_mob is Dictionary) or not bool(state_for_mob.get("dead", false)):
+		return false
+	if state_for_mob.has("respawn_at") and state_for_mob["respawn_at"] != null:
+		var world_state = current_state.get("world", {})
+		var now := float(world_state.get("action_clock_seconds", 0.0)) if world_state is Dictionary else 0.0
+		return now < float(state_for_mob["respawn_at"])
+	return true
 
 
 func _pick_npc() -> Dictionary:
@@ -3058,11 +4095,11 @@ func _station(station_key: String) -> Dictionary:
 	return {}
 
 
-func _first_ground_item() -> Dictionary:
+func _first_ground_item(pickable_only: bool = false) -> Dictionary:
 	var drops := _ground_items()
 	if drops.is_empty():
 		return {}
-	var item = drops[0]
+	var item = _first_pickable_ground_item() if pickable_only else drops[0]
 	if item is Dictionary:
 		var data: Dictionary = item.duplicate(true)
 		data["type"] = "ground_item"
@@ -3072,6 +4109,17 @@ func _first_ground_item() -> Dictionary:
 			data["tile"] = _player_tile()
 		return data
 	return {}
+
+
+func _first_pickable_ground_item() -> Dictionary:
+	for item in _ground_items():
+		if item is Dictionary and _ground_item_can_fit(item):
+			return item
+	return {}
+
+
+func _ground_item_can_fit(item: Dictionary) -> bool:
+	return _can_add_inventory_item(str(item.get("item_id", "")), int(item.get("quantity", 1)))
 
 
 func _first_depositable_item() -> String:
@@ -3097,6 +4145,8 @@ func _first_sellable_item() -> String:
 		if str(item_id) == "coins":
 			continue
 		var definition = items_data.get(str(item_id), {})
+		if _quest_needs_food_item(str(item_id), definition):
+			continue
 		if definition is Dictionary and int(definition.get("sell_price", 0)) > 0 and int(_inventory().get(item_id, 0)) > 0 and not _is_protected_gathering_tool(str(item_id)):
 			return str(item_id)
 	return ""
@@ -3114,6 +4164,9 @@ func _first_equippable_item() -> String:
 	for item_id in _sorted_keys(_inventory()):
 		var definition = items_data.get(str(item_id), {})
 		if definition is Dictionary and definition.has("equip_slot") and int(_inventory().get(item_id, 0)) > 0:
+			var slot := str(definition.get("equip_slot", ""))
+			if str(_equipment().get(slot, "")) == str(item_id):
+				continue
 			return str(item_id)
 	return ""
 
@@ -3353,7 +4406,7 @@ func _action_has_valid_target(action_name: String) -> bool:
 		"attack_mob":
 			return not _pick_mob().is_empty() and not _combat_recovery_needed()
 		"pickup_drop":
-			return not _ground_items().is_empty()
+			return not _first_pickable_ground_item().is_empty()
 		"talk_npc", "dialogue_action":
 			return not _pick_npc().is_empty()
 		"open_bank":
@@ -3568,7 +4621,16 @@ func _item_is_useful_now(item_id: String, definition) -> bool:
 		return false
 	var can_heal := int(definition.get("heal_amount", 0)) > 0 and _needs_healing()
 	var can_cleanse := bool(definition.get("cleanses_poison", false)) and _has_poison_status()
-	return int(_inventory().get(item_id, 0)) > 0 and (can_heal or can_cleanse)
+	return int(_inventory().get(item_id, 0)) > 0 and (can_heal or can_cleanse or _quest_needs_food_item(item_id, definition))
+
+
+func _quest_needs_food_item(_item_id: String, definition) -> bool:
+	if current_scenario != "quest_chaser" or not (definition is Dictionary):
+		return false
+	if int(definition.get("heal_amount", 0)) <= 0:
+		return false
+	var target := _active_quest_target()
+	return not target.is_empty() and _missing_flags(target).has("ate_food")
 
 
 func _item_is_recovery_item(_item_id: String, definition) -> bool:
