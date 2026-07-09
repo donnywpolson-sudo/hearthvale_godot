@@ -16,11 +16,27 @@ const FALLBACK_ICON_PATH := "res://assets/icons/ui/missing.png"
 const ItemTooltipButton := preload("res://scripts/item_tooltip_button.gd")
 const MinimapControl := preload("res://scripts/minimap_control.gd")
 const INVENTORY_SLOT_LIMIT := 28
+const INVENTORY_GRID_COLUMNS := 4
+const INVENTORY_COMPACT_EMPTY_SLOT_FLOOR := 12
+const INVENTORY_SLOT_SIZE := Vector2(58, 52)
+const INVENTORY_COMPACT_SLOT_SIZE := Vector2(50, 42)
+const INVENTORY_ICON_SIZE := Vector2(36, 36)
+const INVENTORY_COMPACT_ICON_SIZE := Vector2(30, 30)
 const EQUIPMENT_SLOTS := ["head", "cape", "amulet", "ammo", "weapon", "body", "shield", "legs", "hands", "feet", "ring"]
 const EQUIPMENT_BONUS_KEYS := ["attack_bonus", "strength_bonus", "defence_bonus", "ranged_bonus", "magic_bonus"]
 const USABLE_BONUS_KEYS := ["attack_bonus", "strength_bonus", "defence_bonus", "ranged_bonus", "magic_bonus", "action_speed_bonus"]
 const EQUIPMENT_PANEL_SIZE := Vector2(252, 278)
 const EQUIPMENT_SLOT_SIZE := Vector2(46, 46)
+const RIGHT_PANEL_BASE_HEIGHT := 464.0
+const RIGHT_PANEL_WIDTH := 312.0
+const RIGHT_PANEL_RIGHT_MARGIN := 10.0
+const RIGHT_PANEL_MIN_TOP := 240.0
+const RIGHT_PANEL_COMPACT_VIEWPORT_HEIGHT := 600.0
+const RIGHT_PANEL_COMPACT_MIN_TOP := 192.0
+const EQUIPMENT_COMPACT_SCALE := 0.70
+const TRANSACTION_NAME_COLUMN_WIDTH := 170.0
+const TRANSACTION_DETAIL_COLUMN_WIDTH := 76.0
+const TRANSACTION_ACTION_COLUMN_WIDTH := 142.0
 const CATEGORY_ORDER := {
 	"currency": 0,
 	"tool": 1,
@@ -87,6 +103,7 @@ var minimap_view: Control
 var compass_button: Button
 var active_shop_data := {}
 var active_dialogue_npc := {}
+var simulation_lightweight_mode := false
 
 
 func _ready() -> void:
@@ -97,6 +114,16 @@ func _ready() -> void:
 	_build_interaction_panel()
 	_build_hover_hint()
 	_build_minimap()
+	root_control.resized.connect(_update_right_panel_layout)
+	_update_right_panel_layout()
+
+
+func set_simulation_lightweight_mode(enabled: bool) -> void:
+	simulation_lightweight_mode = enabled
+	if enabled:
+		_clear_interaction_body()
+		if panel_body != null:
+			_clear_container_children(panel_body)
 
 
 func set_account(username: String) -> void:
@@ -141,19 +168,21 @@ func set_feedback(message: String) -> void:
 	chat_messages.append(message)
 	while chat_messages.size() > 8:
 		chat_messages.pop_front()
-	if active_tab == "state":
+	if active_tab == "state" and not simulation_lightweight_mode:
 		_refresh_state_panel()
 
 
 func bind_state(state: Dictionary) -> void:
 	current_state = state
 	_refresh_top_bar_from_state()
-	_refresh_state_panel()
+	if not simulation_lightweight_mode:
+		_refresh_state_panel()
 
 
 func refresh_state() -> void:
 	_refresh_top_bar_from_state()
-	_refresh_state_panel()
+	if not simulation_lightweight_mode:
+		_refresh_state_panel()
 
 
 func select_tab(tab_id: String) -> void:
@@ -241,9 +270,9 @@ func _build_state_panel() -> void:
 	panel.anchor_right = 1.0
 	panel.anchor_top = 1.0
 	panel.anchor_bottom = 1.0
-	panel.offset_left = -292.0
-	panel.offset_top = -560.0
-	panel.offset_right = -10.0
+	panel.offset_left = -RIGHT_PANEL_WIDTH - RIGHT_PANEL_RIGHT_MARGIN
+	panel.offset_top = -RIGHT_PANEL_BASE_HEIGHT - 16.0
+	panel.offset_right = -RIGHT_PANEL_RIGHT_MARGIN
 	panel.offset_bottom = -16.0
 	root_control.add_child(panel)
 
@@ -272,6 +301,7 @@ func _build_state_panel() -> void:
 	_add_tab_button(tabs, "equipment", "Gear")
 	_add_tab_button(tabs, "skills", "Skills")
 	_add_tab_button(tabs, "quests", "Quest")
+	_add_tab_button(tabs, "state", "State")
 
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(246, 0)
@@ -300,7 +330,7 @@ func _build_interaction_panel() -> void:
 	interaction_panel.anchor_bottom = 1.0
 	interaction_panel.offset_left = 10.0
 	interaction_panel.offset_top = 58.0
-	interaction_panel.offset_right = 382.0
+	interaction_panel.offset_right = 500.0
 	interaction_panel.offset_bottom = -74.0
 	root_control.add_child(interaction_panel)
 
@@ -330,7 +360,7 @@ func _build_interaction_panel() -> void:
 	header.add_child(close_button)
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(340, 360)
+	scroll.custom_minimum_size = Vector2(458, 360)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	stack.add_child(scroll)
 
@@ -418,9 +448,54 @@ func _build_minimap() -> void:
 	stack.add_child(minimap_view)
 
 
+func _update_right_panel_layout() -> void:
+	if panel == null or root_control == null:
+		return
+	var viewport_height := root_control.size.y
+	var compact := viewport_height <= RIGHT_PANEL_COMPACT_VIEWPORT_HEIGHT
+	_update_minimap_layout(compact)
+	var min_top := RIGHT_PANEL_COMPACT_MIN_TOP if compact else RIGHT_PANEL_MIN_TOP
+	var bottom_margin := 24.0 if compact else 16.0
+	var target_top := maxf(min_top, viewport_height - RIGHT_PANEL_BASE_HEIGHT - bottom_margin)
+	panel.offset_left = -RIGHT_PANEL_WIDTH - RIGHT_PANEL_RIGHT_MARGIN
+	panel.offset_right = -RIGHT_PANEL_RIGHT_MARGIN
+	panel.offset_top = target_top - viewport_height
+	panel.offset_bottom = -bottom_margin
+
+
+func _update_minimap_layout(compact: bool) -> void:
+	if minimap_panel == null or minimap_view == null:
+		return
+	if compact:
+		minimap_panel.offset_left = -134.0
+		minimap_panel.offset_top = 50.0
+		minimap_panel.offset_right = -10.0
+		minimap_panel.offset_bottom = 182.0
+		minimap_view.custom_minimum_size = Vector2(108, 82)
+		if compass_button != null:
+			compass_button.custom_minimum_size = Vector2(30, 24)
+		return
+	minimap_panel.offset_left = -166.0
+	minimap_panel.offset_top = 58.0
+	minimap_panel.offset_right = -10.0
+	minimap_panel.offset_bottom = 230.0
+	minimap_view.custom_minimum_size = Vector2(136, 124)
+	if compass_button != null:
+		compass_button.custom_minimum_size = Vector2(32, 26)
+
+
 func hide_interaction_panel() -> void:
 	if interaction_panel != null:
 		interaction_panel.visible = false
+	if panel != null:
+		panel.visible = true
+
+
+func _show_interaction_panel() -> void:
+	if interaction_panel != null:
+		interaction_panel.visible = true
+	if panel != null:
+		panel.visible = false
 
 
 func hover_hint_is_visible() -> bool:
@@ -473,7 +548,9 @@ func interaction_panel_row_count() -> int:
 func show_bank_panel() -> void:
 	_clear_interaction_body()
 	interaction_title.text = "Bank"
-	interaction_panel.visible = true
+	_show_interaction_panel()
+	if simulation_lightweight_mode:
+		return
 	var inventory := _stack_mapping(current_state.get("inventory", {}))
 	var bank := _stack_mapping(current_state.get("bank", {}))
 	_add_interaction_section("Inventory")
@@ -494,7 +571,9 @@ func show_shop_panel(shop_data: Dictionary) -> void:
 	active_shop_data = shop_data.duplicate(true)
 	_clear_interaction_body()
 	interaction_title.text = str(shop_data.get("name", "Shop"))
-	interaction_panel.visible = true
+	_show_interaction_panel()
+	if simulation_lightweight_mode:
+		return
 	_new_item_interaction_row("coins", "%d carried" % int(_stack_mapping(current_state.get("inventory", {})).get("coins", 0)))
 	var stock = shop_data.get("stock", [])
 	_add_interaction_section("Buy")
@@ -523,7 +602,9 @@ func show_dialogue_panel(npc_data: Dictionary, definition: Dictionary, quest_sta
 	active_dialogue_npc = npc_data.duplicate(true)
 	_clear_interaction_body()
 	interaction_title.text = str(npc_data.get("label", npc_data.get("name", "NPC")))
-	interaction_panel.visible = true
+	_show_interaction_panel()
+	if simulation_lightweight_mode:
+		return
 	_add_interaction_row(message)
 	if not definition.is_empty():
 		_add_interaction_section(str(definition.get("display_name", "Quest")))
@@ -546,7 +627,9 @@ func show_item_action_panel(item_id: String) -> void:
 	var definition = items_data.get(item_id, {})
 	_clear_interaction_body()
 	interaction_title.text = _item_name(item_id)
-	interaction_panel.visible = true
+	_show_interaction_panel()
+	if simulation_lightweight_mode:
+		return
 	_new_item_interaction_row(item_id, _display_label(_item_category(item_id)))
 	_add_interaction_row(_item_tooltip(item_id, int(inventory[item_id])))
 	var added_action := false
@@ -574,7 +657,9 @@ func show_equipment_action_panel(slot: String) -> void:
 		return
 	_clear_interaction_body()
 	interaction_title.text = "%s: %s" % [_display_label(slot), _item_name(item_id)]
-	interaction_panel.visible = true
+	_show_interaction_panel()
+	if simulation_lightweight_mode:
+		return
 	_new_item_interaction_row(item_id, _display_label(_item_category(item_id)))
 	_add_interaction_row(_item_tooltip(item_id))
 	_add_equipment_action_button("Unequip", slot, "unequip")
@@ -584,54 +669,69 @@ func show_equipment_action_panel(slot: String) -> void:
 func _clear_interaction_body() -> void:
 	if interaction_body == null:
 		return
-	for child in interaction_body.get_children():
-		child.queue_free()
+	_clear_container_children(interaction_body)
+
+
+func _clear_container_children(container: Node) -> void:
+	for child in container.get_children():
+		if simulation_lightweight_mode:
+			container.remove_child(child)
+			child.free()
+		else:
+			child.queue_free()
 
 
 func _add_bank_inventory_row(item_id: String, quantity: int) -> void:
-	var row := _new_item_interaction_row(item_id, "x%d" % quantity)
+	var actions := _new_transaction_item_row(item_id, "x%d" % quantity)
 	var one := Button.new()
 	one.text = "Deposit 1"
+	_configure_transaction_button(one, 88.0)
 	one.pressed.connect(func() -> void: bank_deposit_requested.emit(item_id, 1))
-	row.add_child(one)
+	actions.add_child(one)
 	var all := Button.new()
 	all.text = "All"
+	_configure_transaction_button(all, 42.0)
 	all.pressed.connect(func() -> void: bank_deposit_requested.emit(item_id, 0))
-	row.add_child(all)
+	actions.add_child(all)
 
 
 func _add_bank_storage_row(item_id: String, quantity: int) -> void:
-	var row := _new_item_interaction_row(item_id, "x%d stored" % quantity)
+	var actions := _new_transaction_item_row(item_id, "x%d stored" % quantity)
 	var one := Button.new()
 	one.text = "Withdraw 1"
+	_configure_transaction_button(one, 96.0)
 	one.pressed.connect(func() -> void: bank_withdraw_requested.emit(item_id, 1))
-	row.add_child(one)
+	actions.add_child(one)
 	var all := Button.new()
 	all.text = "All"
+	_configure_transaction_button(all, 42.0)
 	all.pressed.connect(func() -> void: bank_withdraw_requested.emit(item_id, 0))
-	row.add_child(all)
+	actions.add_child(all)
 
 
 func _add_shop_stock_row(item_id: String, price: int) -> void:
 	if item_id.is_empty() or price <= 0:
 		return
-	var row := _new_item_interaction_row(item_id, "%d coins" % price)
+	var actions := _new_transaction_item_row(item_id, "%d coins" % price)
 	var button := Button.new()
 	button.text = "Buy"
+	_configure_transaction_button(button, TRANSACTION_ACTION_COLUMN_WIDTH)
 	button.pressed.connect(func() -> void: shop_buy_requested.emit(item_id, price))
-	row.add_child(button)
+	actions.add_child(button)
 
 
 func _add_shop_inventory_row(item_id: String, quantity: int, price: int) -> void:
-	var row := _new_item_interaction_row(item_id, "x%d  %d ea" % [quantity, price])
+	var actions := _new_transaction_item_row(item_id, "x%d  %d ea" % [quantity, price])
 	var one := Button.new()
 	one.text = "Sell 1"
+	_configure_transaction_button(one, 78.0)
 	one.pressed.connect(func() -> void: shop_sell_requested.emit(item_id, 1))
-	row.add_child(one)
+	actions.add_child(one)
 	var all := Button.new()
 	all.text = "All"
+	_configure_transaction_button(all, 42.0)
 	all.pressed.connect(func() -> void: shop_sell_requested.emit(item_id, 0))
-	row.add_child(all)
+	actions.add_child(all)
 
 
 func _add_inventory_action_button(label: String, item_id: String, action: String) -> void:
@@ -680,6 +780,48 @@ func _new_item_interaction_row(item_id: String, detail_text: String = "") -> HBo
 	return row
 
 
+func _new_transaction_item_row(item_id: String, detail_text: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.custom_minimum_size = Vector2(0, 36)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	interaction_body.add_child(row)
+
+	var stripe := ColorRect.new()
+	stripe.color = _item_color(item_id)
+	stripe.custom_minimum_size = Vector2(4, 32)
+	row.add_child(stripe)
+
+	var icon := _new_item_icon(item_id, Vector2(28, 28))
+	row.add_child(icon)
+
+	var name_label := Label.new()
+	name_label.text = _item_name(item_id)
+	name_label.modulate = _item_color(item_id)
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_label.custom_minimum_size = Vector2(TRANSACTION_NAME_COLUMN_WIDTH, 0)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_label)
+
+	var detail_label := Label.new()
+	detail_label.text = detail_text
+	detail_label.modulate = Color(0.72, 0.72, 0.72, 1.0)
+	detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	detail_label.custom_minimum_size = Vector2(TRANSACTION_DETAIL_COLUMN_WIDTH, 0)
+	row.add_child(detail_label)
+
+	var action_box := HBoxContainer.new()
+	action_box.add_theme_constant_override("separation", 4)
+	action_box.custom_minimum_size = Vector2(TRANSACTION_ACTION_COLUMN_WIDTH, 0)
+	action_box.size_flags_horizontal = Control.SIZE_SHRINK_END
+	row.add_child(action_box)
+	return action_box
+
+
+func _configure_transaction_button(button: Button, width: float) -> void:
+	button.custom_minimum_size = Vector2(width, 30)
+
+
 func _new_interaction_row(text: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
@@ -726,8 +868,10 @@ func _add_tab_button(parent: HBoxContainer, tab_id: String, label: String) -> vo
 func _refresh_state_panel() -> void:
 	if panel_body == null:
 		return
-	for child in panel_body.get_children():
-		child.queue_free()
+	if simulation_lightweight_mode:
+		_clear_container_children(panel_body)
+		return
+	_clear_container_children(panel_body)
 
 	match active_tab:
 		"inventory":
@@ -764,15 +908,18 @@ func _refresh_top_bar_from_state() -> void:
 func _render_inventory_panel() -> void:
 	var inventory := _stack_mapping(current_state.get("inventory", {}))
 	var bank := _stack_mapping(current_state.get("bank", {}))
+	var compact := _right_panel_uses_compact_layout()
 	var grid := GridContainer.new()
-	grid.columns = 4
+	grid.columns = INVENTORY_GRID_COLUMNS
 	grid.add_theme_constant_override("h_separation", 4)
 	grid.add_theme_constant_override("v_separation", 4)
 	panel_body.add_child(grid)
 	var views := _inventory_slot_views(inventory)
-	for index in range(INVENTORY_SLOT_LIMIT):
+	var visible_slot_count := _inventory_visible_slot_count(views.size(), compact)
+	var slot_size := INVENTORY_COMPACT_SLOT_SIZE if compact else INVENTORY_SLOT_SIZE
+	for index in range(visible_slot_count):
 		var button := ItemTooltipButton.new()
-		button.custom_minimum_size = Vector2(58, 52)
+		button.custom_minimum_size = slot_size
 		button.clip_contents = true
 		if index < views.size():
 			var view: Dictionary = views[index]
@@ -782,12 +929,13 @@ func _render_inventory_panel() -> void:
 			_apply_item_tooltip(button, item_id, quantity)
 			button.set_meta("item_name", _item_name(item_id))
 			button.pressed.connect(func(selected_item_id := item_id) -> void: show_item_action_panel(selected_item_id))
-			_add_inventory_button_content(button, view)
+			_add_inventory_button_content(button, view, compact)
 		else:
 			button.text = ""
 			button.disabled = true
 		grid.add_child(button)
 
+	_add_muted_label("Slots %d/%d" % [_inventory_slot_count(inventory), INVENTORY_SLOT_LIMIT])
 	_add_section_label("Bank")
 	if bank.is_empty():
 		_add_muted_label("Bank is empty")
@@ -796,7 +944,7 @@ func _render_inventory_panel() -> void:
 			_add_panel_item_row(item_id, "x%d stored" % int(bank[item_id]))
 
 
-func _add_inventory_button_content(button: Button, view: Dictionary) -> void:
+func _add_inventory_button_content(button: Button, view: Dictionary, compact: bool = false) -> void:
 	var item_id := str(view["item_id"])
 	var quantity := int(view["quantity"])
 
@@ -809,7 +957,8 @@ func _add_inventory_button_content(button: Button, view: Dictionary) -> void:
 	center.offset_bottom = -5.0
 	button.add_child(center)
 
-	var icon := _new_item_icon(item_id, Vector2(36, 36))
+	var icon_size := INVENTORY_COMPACT_ICON_SIZE if compact else INVENTORY_ICON_SIZE
+	var icon := _new_item_icon(item_id, icon_size)
 	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	center.add_child(icon)
@@ -875,21 +1024,39 @@ func _add_panel_item_row(item_id: String, detail_text: String = "") -> void:
 
 func _render_equipment_panel() -> void:
 	var equipment := _string_mapping(current_state.get("equipment", {}))
+	var panel_scale := _equipment_panel_scale()
+	var scaled_size := EQUIPMENT_PANEL_SIZE * panel_scale
 	var frame := PanelContainer.new()
-	frame.custom_minimum_size = EQUIPMENT_PANEL_SIZE
+	frame.custom_minimum_size = scaled_size
 	frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	frame.add_theme_stylebox_override("panel", _equipment_frame_style())
 	panel_body.add_child(frame)
 
+	var frame_slot := Control.new()
+	frame_slot.custom_minimum_size = scaled_size
+	frame.add_child(frame_slot)
+
 	var canvas := Control.new()
 	canvas.custom_minimum_size = EQUIPMENT_PANEL_SIZE
-	frame.add_child(canvas)
+	canvas.size = EQUIPMENT_PANEL_SIZE
+	canvas.scale = Vector2(panel_scale, panel_scale)
+	frame_slot.add_child(canvas)
 
 	_add_equipment_connector_lines(canvas)
 	_add_equipment_silhouette(canvas)
 	for slot in EQUIPMENT_SLOTS:
 		_add_equipment_slot_tile(canvas, slot, str(equipment.get(slot, "")))
 	_add_equipment_bonus_summary(equipment)
+
+
+func _equipment_panel_scale() -> float:
+	if _right_panel_uses_compact_layout():
+		return EQUIPMENT_COMPACT_SCALE
+	return 1.0
+
+
+func _right_panel_uses_compact_layout() -> bool:
+	return root_control != null and root_control.size.y <= RIGHT_PANEL_COMPACT_VIEWPORT_HEIGHT
 
 
 func _add_equipment_slot_tile(parent: Control, slot: String, item_id: String) -> void:
@@ -1083,6 +1250,7 @@ func _add_equipment_bonus_summary(equipment: Dictionary) -> void:
 	var totals := _equipment_bonus_totals(equipment)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
+	row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	panel_body.add_child(row)
 	_add_equipment_bonus_tile(row, "Atk", int(totals.get("attack_bonus", 0)))
 	_add_equipment_bonus_tile(row, "Str", int(totals.get("strength_bonus", 0)))
@@ -1094,7 +1262,7 @@ func _add_equipment_bonus_summary(equipment: Dictionary) -> void:
 func _add_equipment_bonus_tile(parent: HBoxContainer, label_text: String, value: int) -> void:
 	var tile := PanelContainer.new()
 	tile.custom_minimum_size = Vector2(48, 30)
-	tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tile.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	tile.add_theme_stylebox_override("panel", _flat_style(Color(0.12, 0.12, 0.11, 0.92), Color(0.28, 0.27, 0.24, 1.0), 1, 4))
 	parent.add_child(tile)
 
@@ -1240,17 +1408,18 @@ func _add_quest_row(quest_id: String, definition: Dictionary, quest_state) -> vo
 	var state: Dictionary = quest_state if quest_state is Dictionary else {}
 	var title := str(definition.get("display_name", _display_label(quest_id)))
 	var status := _quest_status_text(state)
+	var compact := _right_panel_uses_compact_layout()
 	var row_panel := PanelContainer.new()
-	row_panel.custom_minimum_size = Vector2(0, 54)
+	row_panel.custom_minimum_size = Vector2(0, 46 if compact else 54)
 	row_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row_panel.add_theme_stylebox_override("panel", _quest_row_style(status))
 	panel_body.add_child(row_panel)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 6)
-	margin.add_theme_constant_override("margin_top", 5)
+	margin.add_theme_constant_override("margin_top", 4 if compact else 5)
 	margin.add_theme_constant_override("margin_right", 6)
-	margin.add_theme_constant_override("margin_bottom", 5)
+	margin.add_theme_constant_override("margin_bottom", 4 if compact else 5)
 	row_panel.add_child(margin)
 
 	var row := HBoxContainer.new()
@@ -1259,10 +1428,10 @@ func _add_quest_row(quest_id: String, definition: Dictionary, quest_state) -> vo
 
 	var stripe := ColorRect.new()
 	stripe.color = _quest_status_color(status)
-	stripe.custom_minimum_size = Vector2(4, 36)
+	stripe.custom_minimum_size = Vector2(4, 30 if compact else 36)
 	row.add_child(stripe)
 
-	var icon := _new_asset_icon("ui/quest", Vector2(24, 24))
+	var icon := _new_asset_icon("ui/quest", Vector2(22, 22) if compact else Vector2(24, 24))
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(icon)
 
@@ -1285,6 +1454,9 @@ func _add_quest_row(quest_id: String, definition: Dictionary, quest_state) -> vo
 	status_label.text = status
 	status_label.modulate = _quest_status_color(status)
 	status_label.add_theme_font_size_override("font_size", 10)
+	status_label.custom_minimum_size = Vector2(62 if compact else 68, 0)
+	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	status_label.clip_text = true
 	header.add_child(status_label)
 
 	var objective_label := Label.new()
@@ -1536,6 +1708,17 @@ func _inventory_slot_count(inventory: Dictionary) -> int:
 			continue
 		count += 1 if _is_stackable_item(str(item_id)) else quantity
 	return count
+
+
+func _inventory_visible_slot_count(filled_slots: int, compact: bool) -> int:
+	if not compact:
+		return INVENTORY_SLOT_LIMIT
+	var visible_count: int = maxi(filled_slots, INVENTORY_COMPACT_EMPTY_SLOT_FLOOR)
+	visible_count = mini(visible_count, INVENTORY_SLOT_LIMIT)
+	var remainder := visible_count % INVENTORY_GRID_COLUMNS
+	if remainder > 0:
+		visible_count = mini(visible_count + INVENTORY_GRID_COLUMNS - remainder, INVENTORY_SLOT_LIMIT)
+	return visible_count
 
 
 func _slot_button_text(view: Dictionary) -> String:

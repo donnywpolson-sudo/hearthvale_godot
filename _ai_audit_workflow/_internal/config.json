@@ -1,0 +1,62 @@
+{
+  "godotExe": "C:\\Users\\donny\\Desktop\\Godot_v4.7-stable_win64.exe",
+  "launcher": "_ai_audit_workflow\\_internal\\HEARTHVALE_AI_SIMULATION.bat",
+  "auditSpec": "_ai_audit_workflow\\_internal\\HEARTHVALE_AI_SIMULATION_AUDIT.md",
+  "auditReport": "_ai_audit_workflow\\_internal\\HEARTHVALE_AI_SIMULATION_AUDIT_REPORT.md",
+  "currentDir": "_ai_audit_workflow\\_internal\\current",
+  "visualCaptureScript": "res://scripts/visual_review_capture.gd",
+  "visualCaptureLog": ".godot_logs\\visual_review_capture.log",
+  "recommendSmokeScript": "res://scripts/tools/recommend_ai_audit_settings_smoke.gd",
+  "recommendSmokeLog": ".godot_logs\\recommend_ai_audit_settings_smoke.log",
+  "simulationSummary": ".godot\\ai_simulation\\_working\\current\\summary.json",
+  "performanceObservations": ".godot\\ai_simulation\\_working\\current\\performance_observations.json",
+  "playtestLog": ".godot_logs\\playtest_simulation.log",
+  "visualCaptureExpectedViewports": 3,
+  "visualCaptureExpectedStatesPerViewport": 9,
+  "tiers": {
+    "Light": {
+      "runs": 120,
+      "steps": 200,
+      "seed": 1,
+      "scenario": "all",
+      "trace": "issues",
+      "profile": "coverage",
+      "timeoutSeconds": 600,
+      "scenarioProbes": "auto"
+    },
+    "Deep": {
+      "runs": 4500,
+      "steps": 1800,
+      "seed": 1,
+      "scenario": "all",
+      "trace": "issues",
+      "profile": "coverage",
+      "timeoutSeconds": 43200,
+      "scenarioProbes": "auto"
+    }
+  },
+  "scoreThresholdForQueue": 80,
+  "smokes": [
+    { "name": "boot_flow_smoke", "script": "res://scripts/boot_flow_smoke.gd", "expected": "Hearthvale boot flow smoke passed." },
+    { "name": "save_roundtrip_smoke", "script": "res://scripts/save_roundtrip_smoke.gd", "expected": "Hearthvale save round-trip smoke passed." },
+    { "name": "playable_shell_smoke", "script": "res://scripts/playable_shell_smoke.gd", "expected": "Hearthvale playable shell smoke passed." },
+    { "name": "pathfinding_interaction_smoke", "script": "res://scripts/pathfinding_interaction_smoke.gd", "expected": "Hearthvale pathfinding interaction smoke passed." },
+    { "name": "camera_minimap_smoke", "script": "res://scripts/camera_minimap_smoke.gd", "expected": "Hearthvale camera minimap smoke passed." },
+    { "name": "visual_recreation_smoke", "script": "res://scripts/visual_recreation_smoke.gd", "expected": "Hearthvale visual recreation smoke passed." },
+    { "name": "ui_state_smoke", "script": "res://scripts/ui_state_smoke.gd", "expected": "Hearthvale UI state smoke passed." },
+    { "name": "interaction_panel_smoke", "script": "res://scripts/interaction_panel_smoke.gd", "expected": "Hearthvale interaction panel smoke passed." },
+    { "name": "core_gameplay_smoke", "script": "res://scripts/core_gameplay_smoke.gd", "expected": "Hearthvale core gameplay smoke passed." },
+    { "name": "combat_depth_smoke", "script": "res://scripts/combat_depth_smoke.gd", "expected": "Hearthvale combat depth smoke passed." },
+    { "name": "timed_action_smoke", "script": "res://scripts/timed_action_smoke.gd", "expected": "Hearthvale timed action smoke passed." },
+    { "name": "economy_quest_smoke", "script": "res://scripts/economy_quest_smoke.gd", "expected": "Hearthvale economy and quest smoke passed." },
+    { "name": "golden_scenarios_smoke", "script": "res://scripts/golden_scenarios_smoke.gd", "expected": "Hearthvale golden scenarios smoke passed." },
+    { "name": "save_load_torture_smoke", "script": "res://scripts/save_load_torture_smoke.gd", "expected": "Hearthvale save/load torture smoke passed." },
+    { "name": "debug_command_console_smoke", "script": "res://scripts/debug_command_console_smoke.gd", "expected": "Hearthvale debug command console smoke passed." },
+    { "name": "debug_overlay_smoke", "script": "res://scripts/debug_overlay_smoke.gd", "expected": "Hearthvale debug overlay smoke passed." },
+    { "name": "state_snapshot_smoke", "script": "res://scripts/state_snapshot_smoke.gd", "expected": "Hearthvale state snapshot smoke passed." },
+    { "name": "recommend_ai_audit_settings_smoke", "script": "res://scripts/tools/recommend_ai_audit_settings_smoke.gd", "expected": "Hearthvale AI audit recommendation smoke passed." },
+    { "name": "progression_regression_smoke", "script": "res://scripts/progression_regression_smoke.gd", "expected": "Hearthvale progression regression smoke passed." },
+    { "name": "data_validation_smoke", "script": "res://scripts/data_validation_smoke.gd", "expected": "Hearthvale data validation smoke passed." },
+    { "name": "asset_fallback_smoke", "script": "res://scripts/asset_fallback_smoke.gd", "expected": "Hearthvale asset fallback smoke passed." }
+  ]
+}

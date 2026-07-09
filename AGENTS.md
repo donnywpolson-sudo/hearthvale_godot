@@ -155,17 +155,27 @@ Targeted single-smoke validation and narrow read-only inspection do not need the
 
 ### Final Responses
 
+- Output language has three levels. Default is `Level 1: Simple Action Format`.
+- `Level 1: Simple Action Format`: use short, clear English. Include only what I need to know. Use this shape:
+  1. What happened.
+  2. Real problems, if any.
+  3. What I should do next.
+  If more work is needed, give one copy-paste-ready prompt.
+- `Level 2: Plain Explanation`: use when I ask for more detail. Explain the reason, files, checks, and tradeoffs in plain English. Avoid coder jargon unless needed.
+- `Level 3: Full Audit`: use for audits, risky changes, bugs, protected contracts, or when I ask for rigorous detail. Include evidence, risks, assumptions, and exact next steps.
 - Start with a concise opening outcome when there is a completed result to report. Include the concrete result, files touched, and checks run there instead of using a `Done` section.
 - For normal implementation, status, and handoff runs, use only these real final sections in this order:
   - `Problems`: write `None. Proceed status: yes.` when clear. Otherwise list only real problems or caveats as `Low`, `Medium`, or `Severe`, with concrete evidence where practical. End with `Proceed status: yes.`, `Proceed status: yes with medium problems.`, or `Proceed status: no.`
-  - `Suggestions`: write `None.` when the request is complete. Otherwise give exactly one next action: one human decision, one bounded executable phase, or one fenced Plan Mode handoff prompt.
+  - `Suggestions`: write `None.` only when the request is complete and no useful continuation remains. Otherwise give exactly one next action: one human decision, one bounded executable phase, or one fenced paste-ready prompt.
 - Mention successful validation briefly in the opening outcome. Mention only unresolved failed checks, generated-artifact risks, row-count/model-metric risks, or material caveats under `Problems`.
 - Do not add extra final sections such as `Done`, `Tests`, `Validation`, `Notes`, `Changed`, or `Next Steps` unless the user explicitly asks for that format.
 - If the user asks for an audit, review, or prompt template with a specific structure, use the requested structure while preserving all repo safety rules.
 - Required system/developer appendages, app directives, git directives, and memory citations may appear after the repo-local final sections, but keep them minimal.
-- For `Suggestions`, default to `None.` after completed one-shot work or completed implementation.
+- For `Suggestions`, use `None.` only for true terminal one-shot work. If any nontrivial, risky, broad, provider/network, generated-artifact, cleanup, mutating, fresh-thread, gameplay/content, protected-contract, smoke-validation, or visual/UI follow-up remains, prefer one fenced paste-ready prompt.
 - Use a human decision only when the agent cannot safely choose.
 - Use a bounded executable phase only when follow-up is ready to run. For expensive, broad, data/model, provider/network, generated-artifact, cleanup, or mutating work, include command family, scope limit, timeout or stop budget, artifacts, forbidden patterns, expected generated files, and stop condition.
-- Use a fenced Plan Mode handoff prompt only for real continuation work, fresh-thread continuation, or an unresolved Medium/Severe problem. The prompt must request one implementable `<proposed_plan>` that the user can execute with `Implement Plan`; do not create recursive prompt handoffs.
-- For fresh-thread continuation, start the handoff prompt with `Continue from CODEX_HANDOFF.md.`
+- A paste-ready prompt must state whether the next agent should plan only or execute, name the target objective, require repo path and `git status --short` inspection, require reconciliation against `CODEX_HANDOFF.md`, `README.md`, `docs/smoke_verification_workflow.md`, and current evidence, and include exact bounded scope, forbidden actions, artifacts, timeout or stop budget, stop condition, and validation expectations.
+- If execution is not already safely bounded, the paste-ready prompt must request one implementable `<proposed_plan>` and explicitly say not to mutate files or run Godot, asset, save, smoke-batch, cleanup, or broad content commands yet.
+- When `CODEX_HANDOFF.md` was updated or fresh-thread continuation is likely, start the paste-ready prompt with `Continue from CODEX_HANDOFF.md.`
+- Do not use vague suggestions such as `continue implementation`, `run next phase`, or `improve the game`; convert them into `None.`, one human decision, one bounded executable phase, or one fenced paste-ready prompt.
 - When `CODEX_HANDOFF.md` is updated, final `Suggestions` must match its exact next recommended step.

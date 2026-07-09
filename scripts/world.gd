@@ -1925,11 +1925,18 @@ func _find_path(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
 
 
 func _interaction_target_tile(object_data: Dictionary) -> Vector2i:
+	var route_info := _interaction_target_route(object_data)
+	var tile = route_info.get("tile", Vector2i(-1, -1))
+	if tile is Vector2i:
+		return tile
+	return Vector2i(-1, -1)
+
+
+func _interaction_target_route(object_data: Dictionary) -> Dictionary:
 	var object_tile := _object_tile(object_data)
 	if object_tile == Vector2i(-1, -1):
-		return object_tile
-	var best_tile := Vector2i(-1, -1)
-	var best_distance := 999999
+		return {"tile": object_tile, "path": []}
+	var candidates := {}
 	for dx in range(-INTERACTION_RANGE, INTERACTION_RANGE + 1):
 		for dy in range(-INTERACTION_RANGE, INTERACTION_RANGE + 1):
 			var candidate := object_tile + Vector2i(dx, dy)
@@ -1937,16 +1944,49 @@ func _interaction_target_tile(object_data: Dictionary) -> Vector2i:
 				continue
 			if not _is_walkable_tile(candidate):
 				continue
-			var route := _find_path(current_tile, candidate)
-			if route.is_empty() and candidate != current_tile:
+			candidates[candidate] = true
+	return _nearest_route_to_any_tile(candidates)
+
+
+func _nearest_route_to_any_tile(target_tiles: Dictionary) -> Dictionary:
+	if target_tiles.is_empty() or not _is_walkable_tile(current_tile):
+		return {"tile": Vector2i(-1, -1), "path": []}
+	if target_tiles.has(current_tile):
+		return {"tile": current_tile, "path": []}
+	var frontier: Array[Vector2i] = [current_tile]
+	var came_from := {}
+	came_from[current_tile] = current_tile
+	var directions: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+	var cursor := 0
+	var max_visits := int(world_data.get("width", 30)) * int(world_data.get("height", 30))
+	while cursor < frontier.size() and cursor < max_visits:
+		var current: Vector2i = frontier[cursor]
+		cursor += 1
+		for direction in directions:
+			var next_tile: Vector2i = current + direction
+			if came_from.has(next_tile) or not _is_walkable_tile(next_tile):
 				continue
-			var distance := route.size()
-			if candidate == current_tile:
-				distance = 0
-			if distance < best_distance:
-				best_distance = distance
-				best_tile = candidate
-	return best_tile
+			came_from[next_tile] = current
+			if target_tiles.has(next_tile):
+				return {"tile": next_tile, "path": _path_from_came_from(current_tile, next_tile, came_from, max_visits)}
+			frontier.append(next_tile)
+	return {"tile": Vector2i(-1, -1), "path": []}
+
+
+func _path_from_came_from(start: Vector2i, goal: Vector2i, came_from: Dictionary, max_visits: int) -> Array[Vector2i]:
+	var reversed_path: Array[Vector2i] = []
+	var step := goal
+	var guard := 0
+	while step != start and guard < max_visits:
+		reversed_path.append(step)
+		step = came_from[step]
+		guard += 1
+	if guard >= max_visits:
+		return []
+	var path: Array[Vector2i] = []
+	for index in range(reversed_path.size() - 1, -1, -1):
+		path.append(reversed_path[index])
+	return path
 
 
 func _is_walkable_tile(tile: Vector2i) -> bool:

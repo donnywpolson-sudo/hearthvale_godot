@@ -1,16 +1,36 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-set "PROJECT_ROOT=%~dp0"
+set "WORKFLOW_ROOT=%~dp0"
+for %%I in ("%WORKFLOW_ROOT%..\..") do set "PROJECT_ROOT=%%~fI\"
 set "GODOT_EXE=C:\Users\donny\Desktop\Godot_v4.7-stable_win64.exe"
 set "RUNNER_SCRIPT=res://scripts/playtest_simulation_runner.gd"
 set "LOG_FILE=.godot_logs\playtest_simulation.log"
 set "OUTPUT_DIR=res://.godot/ai_simulation/_working/current"
 set "PUBLIC_OUTPUT_ROOT=res://.godot/ai_simulation"
+set "RECOMMEND_SCRIPT=res://scripts/tools/recommend_ai_audit_settings.gd"
+set "RECOMMEND_SCRIPT_FILE=scripts\tools\recommend_ai_audit_settings.gd"
+set "RECOMMEND_LOG=.godot_logs\recommend_ai_audit_settings.log"
+set "SUMMARY_READER_SCRIPT=res://scripts/tools/read_ai_simulation_summary.gd"
+set "SUMMARY_READER_LOG=.godot_logs\ai_simulation_summary_values.log"
 set "SHOW_COMMAND=%HV_SIM_SHOW_COMMAND%"
 set "TIER_NAME=Custom"
 set "PURPOSE=custom run"
 set "EST_RUNTIME_LABEL=not estimated"
+set "RECOMMENDED_CHOICE=1"
+
+if /I "%~1"=="--recommend" (
+	pushd "%PROJECT_ROOT%" >nul 2>nul
+	if errorlevel 1 (
+		echo Could not enter Hearthvale Godot project root:
+		echo %PROJECT_ROOT%
+		exit /b 1
+	)
+	if not exist ".godot_logs" mkdir ".godot_logs" >nul 2>nul
+	call :print_recommendation
+	popd
+	exit /b 0
+)
 
 if /I "%~1"=="--show-command" (
 	set "SHOW_COMMAND=1"
@@ -43,15 +63,16 @@ if not exist "project.godot" (
 	call :pause_if_needed
 	exit /b 1
 )
+if not exist ".godot_logs" mkdir ".godot_logs" >nul 2>nul
 
-set "RUNS=1000"
-set "STEPS=300"
+set "RUNS=120"
+set "STEPS=200"
 set "SEED=1"
 set "SCENARIO=all"
 set "TRACE=issues"
-set "BALANCE_PROFILE=default"
+set "BALANCE_PROFILE=coverage"
 set "SCENARIO_PROBES=auto"
-set "TIMEOUT_SECONDS=0"
+set "TIMEOUT_SECONDS=600"
 
 if "%~1"=="" (
 	call :choose_tier
@@ -80,7 +101,6 @@ if errorlevel 1 (
 	exit /b 1
 )
 
-if not exist ".godot_logs" mkdir ".godot_logs" >nul 2>nul
 if not exist ".godot\ai_simulation" mkdir ".godot\ai_simulation" >nul 2>nul
 set "LATEST_PROMPT_BEFORE="
 for /f "delims=" %%F in ('dir /b /a-d /o-d ".godot\ai_simulation\ai_simulation_codex_prompt_*.md" 2^>nul') do if not defined LATEST_PROMPT_BEFORE set "LATEST_PROMPT_BEFORE=.godot\ai_simulation\%%F"
@@ -118,6 +138,7 @@ echo.
 echo Progress:
 echo.
 
+set "HV_SIM_LAUNCHER=1"
 "%GODOT_EXE%" --headless --path . --script %RUNNER_SCRIPT% --log-file %LOG_FILE% -- --runs %RUNS% --steps %STEPS% --seed %SEED% --scenario %SCENARIO% --trace %TRACE% --balance-profile %BALANCE_PROFILE% --scenario-probes %SCENARIO_PROBES% --output-dir %OUTPUT_DIR% %PUBLISH_ARGS% --timeout-seconds %TIMEOUT_SECONDS%
 set "RESULT=%ERRORLEVEL%"
 if exist "%LOG_FILE%" (
@@ -131,16 +152,23 @@ if exist "%LOG_FILE%" (
 
 echo.
 if "%RESULT%"=="0" (
+	call :load_run_summary_values
 	echo Summary:
-	echo   Result: completed
+	echo Result: completed
+	echo Runs: !SUMMARY_RUNS!
+	echo Issues: !SUMMARY_ISSUE_OCCURRENCES! occurrences, !SUMMARY_ISSUE_SAMPLES! samples
+	echo Status: !SUMMARY_STATUS!
+	echo Publication: !SUMMARY_PUBLICATION!
+	echo Report: !SUMMARY_REPORT!
+	if defined SUMMARY_WARNING (
+		echo.
+		echo Warnings:
+		echo   !SUMMARY_WARNING!
+	)
 	set "LATEST_PROMPT_AFTER="
 	for /f "delims=" %%F in ('dir /b /a-d /o-d ".godot\ai_simulation\ai_simulation_codex_prompt_*.md" 2^>nul') do if not defined LATEST_PROMPT_AFTER set "LATEST_PROMPT_AFTER=.godot\ai_simulation\%%F"
 	if defined LATEST_PROMPT_AFTER if not "!LATEST_PROMPT_AFTER!"=="!LATEST_PROMPT_BEFORE!" (
-		echo   Latest prompt: %CD%\!LATEST_PROMPT_AFTER!
 		if /I not "%HV_NO_OPEN%"=="1" start "" notepad "!LATEST_PROMPT_AFTER!"
-	) else (
-		echo   Latest prompt: unchanged
-		echo   Archive: %CD%\.godot\ai_simulation\archive
 	)
 ) else (
 	echo Summary:
@@ -159,64 +187,36 @@ set "CHOICE=%HV_SIM_CHOICE%"
 if not defined CHOICE (
 	echo Hearthvale AI simulation launcher
 	echo.
-	echo   #  Tier             Est. Run   Runs    Scope            Scenario/Profile    Purpose
-	echo   1  Strategy Smoke   ~1 min     12      150 steps        all/default         quick sanity check
-	echo   2  Medium           ~10 min    1,000   300 steps        all/default         normal research
-	echo   3  Deep             ~3 hr      10,000  720 steps        all/coverage        deeper evidence
-	echo   4  Overnight        ~10 hr     16,000  1,800 steps      all/coverage        full research
-	echo   5  Cancel
+	echo Default: 1 Light
 	echo.
-	set /p "CHOICE=Choose a tier [1]: "
+	echo   #  Tier             Est. Run   Runs    Scope            Scenario/Profile    Purpose
+	echo   1  Light            ~3 min     120     200 steps        all/coverage        next improvement target
+	echo   2  Deep             ~10 hr     4,500   1,800 steps      all/coverage        overnight audit
+	echo   3  Cancel
+	echo.
+	set /p "CHOICE=Choose a tier [%RECOMMENDED_CHOICE%]: "
 )
-if "%CHOICE%"=="" set "CHOICE=1"
+if "%CHOICE%"=="" set "CHOICE=%RECOMMENDED_CHOICE%"
 
 if "%CHOICE%"=="1" (
-	set "TIER_NAME=Strategy Smoke"
-	set "PURPOSE=quick sanity check"
-	set "EST_RUNTIME_LABEL=~1 min"
-	set "RUNS=12"
-	set "STEPS=150"
-	set "SEED=1"
-	set "SCENARIO=all"
-	set "TRACE=issues"
-	set "BALANCE_PROFILE=default"
-	set "SCENARIO_PROBES=auto"
-	set "TIMEOUT_SECONDS=0"
-	exit /b 0
-)
-if "%CHOICE%"=="2" (
-	set "TIER_NAME=Medium"
-	set "PURPOSE=normal research"
-	set "EST_RUNTIME_LABEL=~10 min"
-	set "RUNS=1000"
-	set "STEPS=300"
-	set "SEED=1"
-	set "SCENARIO=all"
-	set "TRACE=issues"
-	set "BALANCE_PROFILE=default"
-	set "SCENARIO_PROBES=auto"
-	set "TIMEOUT_SECONDS=0"
-	exit /b 0
-)
-if "%CHOICE%"=="3" (
-	set "TIER_NAME=Deep"
-	set "PURPOSE=deeper evidence"
-	set "EST_RUNTIME_LABEL=~3 hr"
-	set "RUNS=10000"
-	set "STEPS=720"
+	set "TIER_NAME=Light"
+	set "PURPOSE=next improvement target"
+	set "EST_RUNTIME_LABEL=~3 min"
+	set "RUNS=120"
+	set "STEPS=200"
 	set "SEED=1"
 	set "SCENARIO=all"
 	set "TRACE=issues"
 	set "BALANCE_PROFILE=coverage"
 	set "SCENARIO_PROBES=auto"
-	set "TIMEOUT_SECONDS=14400"
+	set "TIMEOUT_SECONDS=600"
 	exit /b 0
 )
-if "%CHOICE%"=="4" (
-	set "TIER_NAME=Overnight"
-	set "PURPOSE=full research"
+if "%CHOICE%"=="2" (
+	set "TIER_NAME=Deep"
+	set "PURPOSE=overnight audit"
 	set "EST_RUNTIME_LABEL=~10 hr"
-	set "RUNS=16000"
+	set "RUNS=4500"
 	set "STEPS=1800"
 	set "SEED=1"
 	set "SCENARIO=all"
@@ -226,13 +226,60 @@ if "%CHOICE%"=="4" (
 	set "TIMEOUT_SECONDS=43200"
 	exit /b 0
 )
-if "%CHOICE%"=="5" (
+if "%CHOICE%"=="3" (
 	echo Cancelled.
 	exit /b 2
 )
 
 echo Invalid tier choice: %CHOICE%
 exit /b 1
+
+:choose_recommended_config
+if not exist "%RECOMMEND_SCRIPT_FILE%" (
+	echo Audit recommendation unavailable; missing %RECOMMEND_SCRIPT_FILE%
+	exit /b 1
+)
+set "RECOMMENDED_RUNS="
+set "RECOMMENDED_STEPS="
+set "RECOMMENDED_SEED="
+set "RECOMMENDED_SCENARIO="
+set "RECOMMENDED_TRACE="
+set "RECOMMENDED_PROFILE="
+set "RECOMMENDED_TIMEOUT="
+set "RECOMMENDED_PROBES="
+set "RECOMMEND_ARGS_FILE=.godot_logs\recommend_ai_audit_args_%RANDOM%.txt"
+"%GODOT_EXE%" --headless --path . --script %RECOMMEND_SCRIPT% --log-file %RECOMMEND_LOG% -- --output args --output-file "%RECOMMEND_ARGS_FILE%"
+if errorlevel 1 (
+	echo Audit recommendation did not return runnable settings.
+	echo Godot log: %CD%\%RECOMMEND_LOG%
+	exit /b 1
+)
+for /f "usebackq tokens=1-8" %%A in ("%RECOMMEND_ARGS_FILE%") do (
+	set "RECOMMENDED_RUNS=%%A"
+	set "RECOMMENDED_STEPS=%%B"
+	set "RECOMMENDED_SEED=%%C"
+	set "RECOMMENDED_SCENARIO=%%D"
+	set "RECOMMENDED_TRACE=%%E"
+	set "RECOMMENDED_PROFILE=%%F"
+	set "RECOMMENDED_TIMEOUT=%%G"
+	set "RECOMMENDED_PROBES=%%H"
+)
+if not defined RECOMMENDED_RUNS (
+	echo Audit recommendation did not return runnable settings.
+	exit /b 1
+)
+set "TIER_NAME=Custom"
+set "PURPOSE=targeted evidence for the weakest audit lane"
+set "EST_RUNTIME_LABEL=custom"
+set "RUNS=%RECOMMENDED_RUNS%"
+set "STEPS=%RECOMMENDED_STEPS%"
+set "SEED=%RECOMMENDED_SEED%"
+set "SCENARIO=%RECOMMENDED_SCENARIO%"
+set "TRACE=%RECOMMENDED_TRACE%"
+set "BALANCE_PROFILE=%RECOMMENDED_PROFILE%"
+set "TIMEOUT_SECONDS=%RECOMMENDED_TIMEOUT%"
+set "SCENARIO_PROBES=%RECOMMENDED_PROBES%"
+exit /b 0
 
 :validate_config
 call :require_positive_int "%RUNS%" "runs"
@@ -354,4 +401,59 @@ exit /b 0
 
 :pause_if_needed
 if /I not "%HV_NO_PAUSE%"=="1" pause
+exit /b 0
+
+:print_recommendation
+if exist "%RECOMMEND_SCRIPT_FILE%" (
+	"%GODOT_EXE%" --headless --path . --script %RECOMMEND_SCRIPT% --log-file %RECOMMEND_LOG%
+	if errorlevel 1 echo Audit recommendation unavailable; continuing with normal launcher options.
+) else (
+	echo Audit recommendation unavailable; missing %RECOMMEND_SCRIPT_FILE%
+)
+exit /b 0
+
+:load_recommended_choice
+set "RECOMMENDED_CHOICE=1"
+if not exist "%RECOMMEND_SCRIPT_FILE%" exit /b 0
+set "RECOMMENDED_CHOICE_RAW="
+set "RECOMMEND_CHOICE_FILE=.godot_logs\recommend_ai_audit_choice_%RANDOM%.txt"
+"%GODOT_EXE%" --headless --path . --script %RECOMMEND_SCRIPT% --log-file %RECOMMEND_LOG% -- --output choice --output-file "%RECOMMEND_CHOICE_FILE%"
+if errorlevel 1 exit /b 0
+for /f "usebackq tokens=1" %%A in ("%RECOMMEND_CHOICE_FILE%") do if not defined RECOMMENDED_CHOICE_RAW set "RECOMMENDED_CHOICE_RAW=%%A"
+if "%RECOMMENDED_CHOICE_RAW%"=="0" set "RECOMMENDED_CHOICE=0"
+if "%RECOMMENDED_CHOICE_RAW%"=="1" set "RECOMMENDED_CHOICE=1"
+exit /b 0
+
+:load_run_summary_values
+set "SUMMARY_RUNS=%RUNS%"
+set "SUMMARY_ISSUE_OCCURRENCES=unknown"
+set "SUMMARY_ISSUE_SAMPLES=unknown"
+set "SUMMARY_STATUS=simulation completed"
+if /I "%TIER_NAME%"=="Light" set "SUMMARY_STATUS=light audit completed"
+if /I "%TIER_NAME%"=="Deep" set "SUMMARY_STATUS=deep audit completed"
+set "SUMMARY_PUBLISH_STATUS=unknown"
+set "SUMMARY_PUBLICATION=unknown"
+set "SUMMARY_WARNING="
+set "SUMMARY_REPORT=%OUTPUT_DIR%"
+if not exist ".godot\ai_simulation\_working\current\summary.json" goto map_publication_status
+set "SUMMARY_VALUES_FILE=.godot_logs\ai_simulation_summary_values_%RANDOM%.txt"
+"%GODOT_EXE%" --headless --path . --script %SUMMARY_READER_SCRIPT% --log-file %SUMMARY_READER_LOG% -- --summary-path ".godot\ai_simulation\_working\current\summary.json" --output-file "%SUMMARY_VALUES_FILE%"
+if errorlevel 1 goto map_publication_status
+for /f "usebackq tokens=1* delims==" %%A in ("%SUMMARY_VALUES_FILE%") do (
+	if "%%A"=="SUMMARY_RUNS" set "SUMMARY_RUNS=%%B"
+	if "%%A"=="SUMMARY_ISSUE_OCCURRENCES" set "SUMMARY_ISSUE_OCCURRENCES=%%B"
+	if "%%A"=="SUMMARY_ISSUE_SAMPLES" set "SUMMARY_ISSUE_SAMPLES=%%B"
+	if "%%A"=="SUMMARY_PUBLISH_STATUS" set "SUMMARY_PUBLISH_STATUS=%%B"
+)
+:map_publication_status
+if /I "%SUMMARY_PUBLISH_STATUS%"=="published" set "SUMMARY_PUBLICATION=promoted as latest"
+if /I "%SUMMARY_PUBLISH_STATUS%"=="published_allowed_downgrade" (
+	set "SUMMARY_PUBLICATION=promoted as latest with lower coverage allowed"
+	set "SUMMARY_WARNING=A lower-coverage run replaced a stronger previous latest report."
+)
+if /I "%SUMMARY_PUBLISH_STATUS%"=="blocked_lower_coverage" (
+	set "SUMMARY_PUBLICATION=not promoted as latest because lower coverage cannot replace stronger coverage"
+	set "SUMMARY_WARNING=A stronger previous latest report was preserved."
+)
+if /I "%SUMMARY_PUBLISH_STATUS%"=="not_requested" set "SUMMARY_PUBLICATION=not requested"
 exit /b 0

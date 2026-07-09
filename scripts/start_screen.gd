@@ -12,6 +12,7 @@ func _ready() -> void:
 	start_button.pressed.connect(_request_start)
 	name_edit.text_submitted.connect(_on_name_submitted)
 	name_edit.grab_focus()
+	name_edit.caret_column = name_edit.text.length()
 
 
 func _process(delta: float) -> void:
@@ -60,7 +61,8 @@ func _draw_sky() -> void:
 
 
 func _draw_moon() -> void:
-	var center := Vector2(size.x * 0.73, size.y * 0.18)
+	var compact := size.x <= 1000.0 or size.y <= 600.0
+	var center := Vector2(size.x * (0.79 if compact else 0.73), size.y * (0.14 if compact else 0.18))
 	var radius: float = clamp(size.y * 0.055, 22.0, 46.0)
 	_draw_glow(center, radius * 3.2, Color(0.95, 0.74, 0.41, 0.08), 6)
 	draw_circle(center, radius, Color(0.94, 0.80, 0.52, 0.92))

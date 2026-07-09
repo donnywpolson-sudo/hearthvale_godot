@@ -150,7 +150,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_input")
 theme_override_styles/focus = SubResource("StyleBoxFlat_input_focus")
 text = "local_player"
 placeholder_text = "Adventurer name"
-select_all_on_focus = true
+select_all_on_focus = false
 
 [node name="StartButton" type="Button" parent="Panel/Margin/Stack"]
 custom_minimum_size = Vector2(0, 48)

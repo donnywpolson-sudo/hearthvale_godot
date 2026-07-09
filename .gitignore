@@ -5,6 +5,11 @@
 .import/
 *.translation
 
+# Generated audit workflow state
+_ai_audit_workflow/_internal/current/*
+!_ai_audit_workflow/_internal/current/
+!_ai_audit_workflow/_internal/current/README.md
+
 # Godot exports and local editor state
 export.cfg
 export_presets.cfg

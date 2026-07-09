@@ -19,22 +19,31 @@ Get-Process | Where-Object { $_.ProcessName -like '*Godot*' } | Select-Object Id
 Stop-Process -Id <stale_pid> -Force
 ```
 
+## Visual Screenshot Review
+
+Use the visible-render capture script when UI or visual confidence needs real screenshot evidence. Do not run this command with `--headless`; it opens a normal Godot render window, captures key `scenes/main.tscn`/HUD/world states across compact, desktop, and wide 16:9 viewports, and writes ignored runtime artifacts under `.godot/visual_review/<timestamp>/`.
+
+```powershell
+& 'C:\Users\donny\Desktop\Godot_v4.7-stable_win64.exe' --path . --script res://scripts/visual_review_capture.gd --log-file .godot_logs\visual_review_capture.log
+```
+
+Expected output is one PNG per captured state under each viewport subfolder plus `visual_review_prompt.md` at the timestamp root. The script samples each image and exits nonzero if a capture is blank or near-blank. Use the generated prompt for concrete visual defects only: overlap, clipping, missing assets, low contrast, blank panels, confusing states, bad z-order, cropped controls, or viewport framing problems. Do not use screenshot review as proof of fun, balance, audio quality, or player comprehension.
+
 ## Headless Playtest Simulation
 
 Use the Godot-native playtest simulation runner for longer seeded automated playtest simulation bot runs that record bugs, softlocks, QOL annoyances, and balance signals. The clickable launcher publishes user-facing outputs directly under `.godot/ai_simulation/`, and detailed generated reports stay under `.godot/ai_simulation/archive/`.
 
-For the simplest workflow, double-click `HEARTHVALE_AI_SIMULATION.bat` in the project root. It is the direct clickable project launcher, opens an interactive tier menu, shows command-line progress while Godot is running, publishes one timestamped Codex prompt and one same-timestamp JSON summary when publish safety allows it, then opens the prompt in Notepad so it can be pasted into Codex.
+For the simplest workflow, run `_ai_audit_workflow\RUN_AUDIT.ps1`. It is the root workflow entry point; supporting launchers, reports, and config live under `_ai_audit_workflow\_internal`.
 
 Clickable tiers:
 
-- Strategy Smoke: estimated ~1 min, 12 runs, 150 steps, scenario/profile `all/default`, seed 1, trace `issues`, scenario probes `auto` -> smoke. This is the recommended first choice.
-- Medium: estimated ~10 min, 1000 runs, 300 steps, scenario/profile `all/default`, scenario probes `auto` -> full. Use for normal balance and progression signal after the workflow is stable.
-- Deep: estimated ~3 hr, 10000 runs, 720 steps, scenario/profile `all/coverage`, scenario probes `auto` -> full. Use for broad stochastic coverage.
-- Overnight: estimated ~10 hr, 16000 runs, 1800 steps, scenario/profile `all/coverage`, scenario probes `auto` -> full. Use only for unattended sweeps.
+- Light: estimated ~3 min from the latest smoke timing, 120 runs, 200 steps, scenario/profile `all/coverage`, seed 1, trace `issues`, scenario probes `auto` -> smoke, 10-minute stop budget. Use when you want the next good improvement target.
+- Deep: estimated ~10 hr, 4500 runs, 1800 steps, scenario/profile `all/coverage`, seed 1, trace `issues`, scenario probes `auto` -> full, 12-hour stop budget. Use only for unattended overnight audits.
+- Cancel.
 
-Tier runtimes are estimates, not enforced caps. The launcher passes `--timeout-seconds 0` for built-in tiers so they can finish naturally.
+Tier runtimes are estimates. The named Light and Deep tiers include nonzero stop budgets so the workflow cannot run uncapped; direct custom commands can still pass `--timeout-seconds 0` when an uncapped custom run is intentional.
 
-`--seed` is the base seed. Each run uses `base_seed + run_index`, so `--runs 1000 --seed 1` covers seeds 1 through 1000. Increase `--runs` for more independent seeds. Increase `--steps` for longer play sessions within each seed.
+`--seed` is the base seed. Each run uses `base_seed + run_index`, so `--runs 120 --seed 1` covers seeds 1 through 120. Increase `--runs` for more independent seeds. Increase `--steps` for longer play sessions within each seed.
 
 Scenarios:
 
@@ -61,23 +70,23 @@ Balance profiles:
 
 Scenario probes:
 
-- `auto`: reduced deterministic probes for Strategy Smoke/custom/publish-smoke runs; full deterministic probes for Medium, Deep, and Overnight-sized runs.
+- `auto`: reduced deterministic probes for Light/custom/publish-smoke runs; full deterministic probes for Deep-sized runs.
 - `off`: skip deterministic probes.
 - `smoke`: run a reduced deterministic probe set for core loop, starter quest, combat/loot, economy, and inventory pressure.
 - `full`: run the smoke probes plus broader skill, recipe, quest, and mob probes.
 
 Scenario probes are report-only diagnostics inside `summary.json` and the generated prompt. They do not make the simulation exit nonzero unless the runner itself crashes or cannot write outputs. Focused smokes remain the pass/fail authority for protected behavior.
 
-For automation or tuned runs, prefer the direct Godot command below. The root `.bat` accepts the same practical launch values as positional arguments when a clickable project-root launcher is more convenient:
+For automation or tuned runs, prefer the direct Godot command below. The workflow `.bat` accepts the same practical launch values as positional arguments when a clickable launcher is more convenient:
 
 ```powershell
-.\HEARTHVALE_AI_SIMULATION.bat 1000 300 1 all issues default 0 auto
+.\_ai_audit_workflow\_internal\HEARTHVALE_AI_SIMULATION.bat 120 200 1 all issues coverage 600 auto
 ```
 
 The optional seventh `.bat` argument is timeout seconds. `0` disables the timeout; positive values restore a runtime cap for a specific run. The optional eighth argument is scenario probes: `auto`, `off`, `smoke`, or `full`.
 
 ```powershell
-& 'C:\Users\donny\Desktop\Godot_v4.7-stable_win64.exe' --headless --path . --script res://scripts/playtest_simulation_runner.gd --log-file .godot_logs\playtest_simulation.log -- --runs 1000 --steps 300 --seed 1 --scenario all --trace issues --balance-profile default --scenario-probes auto --output-dir res://.godot/ai_simulation/_working/current --publish-latest --public-output-root res://.godot/ai_simulation --timeout-seconds 0
+& 'C:\Users\donny\Desktop\Godot_v4.7-stable_win64.exe' --headless --path . --script res://scripts/playtest_simulation_runner.gd --log-file .godot_logs\playtest_simulation.log -- --runs 120 --steps 200 --seed 1 --scenario all --trace issues --balance-profile coverage --scenario-probes auto --output-dir res://.godot/ai_simulation/_working/current --publish-latest --public-output-root res://.godot/ai_simulation --timeout-seconds 600
 ```
 
 Replay a specific issue sample with the seed and scenario from `issues.jsonl`:
@@ -127,6 +136,7 @@ Keep validators, golden scenario smokes, save/load torture smokes, debug command
 | Dev-only debug command console | `res://scripts/debug_command_console_smoke.gd` | `Hearthvale debug command console smoke passed.` |
 | Dev-only debug overlays | `res://scripts/debug_overlay_smoke.gd` | `Hearthvale debug overlay smoke passed.` |
 | State snapshot/export/restore helpers | `res://scripts/state_snapshot_smoke.gd` | `Hearthvale state snapshot smoke passed.` |
+| AI audit recommendation settings helper | `res://scripts/tools/recommend_ai_audit_settings_smoke.gd` | `Hearthvale AI audit recommendation smoke passed.` |
 | Progression regression, capacity, transactions, food, persistence | `res://scripts/progression_regression_smoke.gd` | `Hearthvale progression regression smoke passed.` |
 | Data, asset, and originality validation | `res://scripts/data_validation_smoke.gd` | `Hearthvale data validation smoke passed.` |
 | Asset manifest fallback paths | `res://scripts/asset_fallback_smoke.gd` | `Hearthvale asset fallback smoke passed.` |
