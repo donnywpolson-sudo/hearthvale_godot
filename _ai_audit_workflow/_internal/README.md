@@ -47,6 +47,8 @@ Manual playtesting is a workflow-evidence lane, not an apply-now gameplay lane. 
 
 Audio review is also a workflow-evidence lane. To close the audio evidence gap, use `_internal/templates/audio_review_notes.md` for a bounded 10-15 minute pass through `scenes/main.tscn`: start/load, UI panels, bank/shop/dialogue, gathering, processing/crafting, combat/recovery, buy/sell, save/load, pause or focus behavior if available, and scene/start-flow transitions if practical. Completed notes must separate missing or wrong cues, timing, overlap, mix balance, bus/volume behavior, pause/focus behavior, spatial behavior if used, unsupported surfaces, and concrete defects. Audio notes can support later review-backed or evidence-backed work only after a separate item verifies the exact defect against current files or focused checks.
 
+Export/platform parity is a workflow-evidence lane for release-confidence moments. To close the export/platform evidence gap, use `_internal/templates/export_platform_review_notes.md` to document a bounded export or exported-build smoke when build artifacts are intentionally allowed. The note must name the target platform, export preset, command or manual export path, build output path, launch result, start/load behavior, save/load continuity, visual parity, audio availability, input behavior, window/fullscreen behavior, logs, and unsupported platforms. Creating this evidence path does not run an export, create build artifacts, edit export presets, or authorize gameplay/content/code/asset changes.
+
 Do not use `-AllowDirtyApply` while unrelated gameplay/content files are dirty unless you intentionally accept that the workflow may refuse to mark restricted-lane items handled.
 
 Typed commands still work if you want them:

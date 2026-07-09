@@ -182,6 +182,26 @@ Use these detailed areas in reports. Mark unsupported surfaces as `not supported
 | Crash/error logging | Godot errors, warnings, stack traces, failed resource loads, unhandled nulls, bad casts. |
 | Telemetry/analytics | Funnel events if used, deaths, completion rates, bug reproduction logs, seed/run metadata. |
 
+### Export And Platform Coverage Details
+
+Use this table when reviewing export or platform evidence from a completed notes file, future export-smoke workflow, Godot export logs, or manually launched exported builds. Mark unsupported targets as `not supported`.
+
+Export/platform review evidence must use `_ai_audit_workflow/_internal/templates/export_platform_review_notes.md` or an equivalent note with the same fields. A valid bounded note names the repo/build context, target platform, export preset, export command or manual export path, build output path, launch result, observed exported-build behavior, logs, unsupported platforms, and stop condition. Export/platform notes can prove observed export, launch, parity, or platform issues, but they do not authorize gameplay, content, data, scene, asset, export-preset, build-setting, script, or save-schema edits without a separate implementation item and current supporting evidence.
+
+| Area | What to audit |
+| --- | --- |
+| Export preset availability | Presets exist for the intended target platform and are intentionally in scope. |
+| Export command/result | Export command or manual path is recorded, bounded, and has a clear pass/fail result. |
+| Build artifact integrity | Output path, timestamp, expected executable/package files, and missing companion files. |
+| Launch/start flow | Exported build launches, reaches start flow, and enters `scenes/main.tscn`. |
+| Save/load continuity | Local saves work in the exported build without relying on editor-only paths. |
+| Visual parity | Rendered output matches current expectations outside the editor. |
+| Audio availability | Basic audio output works in the exported build if audio is in scope. |
+| Input behavior | Keyboard/mouse/controller behavior matches targeted platform support. |
+| Window/fullscreen behavior | Window sizing, fullscreen, high-DPI, and focus behavior for the target platform. |
+| Platform logs | Export or runtime logs do not show blocking missing resources or startup errors. |
+| Unsupported platforms | Targets not currently supported are named instead of treated as failures. |
+
 ### Audio Coverage Details
 
 Use this table when reviewing audio evidence from manual play, future capture workflows, Godot warnings, or targeted smoke/simulation instrumentation. Mark unsupported surfaces as `not supported`.

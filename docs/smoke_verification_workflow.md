@@ -45,6 +45,14 @@ Use `_ai_audit_workflow/_internal/templates/audio_review_notes.md` for a bounded
 
 Completed notes should record repo/build context, git status summary, audio device/output, volume settings, route actually played, concrete defects with exact observed behavior, subjective mix notes separately from defects, unsupported surfaces, and remaining evidence gaps. An audio note can close a `workflow-evidence-audio` queue item when the evidence path is documented or when completed notes are attached, but it must not authorize gameplay, content, data, scene, asset, bus, import, or save changes by itself. Any implementation follow-up needs a separate queue item with current evidence.
 
+## Export Platform Evidence
+
+Export/platform review covers release-confidence surfaces that editor/headless checks cannot prove: export preset availability, exported build launch, start/load behavior in the exported binary, save/load continuity, visual parity, audio availability, input behavior, window/fullscreen behavior, platform logs, and unsupported target platforms. Use it as an evidence path, not as permission to change gameplay, scripts, assets, export presets, or build settings directly.
+
+Use `_ai_audit_workflow/_internal/templates/export_platform_review_notes.md` for a bounded export/platform pass when release confidence matters and build artifacts are intentionally allowed. The pass should record target platform, export preset, export command or manual export path, build output path, build timestamp, launch result, logs, and a short exported-build smoke route. Stop after export failure, launch failure, one severe blocker, or the planned route is complete.
+
+Creating or documenting this evidence path does not run an export, create build artifacts, edit `export_presets.cfg`, or prove platform parity by itself. A completed export/platform note can close a `workflow-evidence-export-platform-parity` queue item when the evidence path is documented or when completed notes are attached, but any implementation follow-up needs a separate queue item with current evidence.
+
 ## Headless Playtest Simulation
 
 Use the Godot-native playtest simulation runner for longer seeded automated playtest simulation bot runs that record bugs, softlocks, QOL annoyances, and balance signals. The clickable launcher publishes user-facing outputs directly under `.godot/ai_simulation/`, and detailed generated reports stay under `.godot/ai_simulation/archive/`.
