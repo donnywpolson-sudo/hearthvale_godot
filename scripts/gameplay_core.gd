@@ -1092,32 +1092,34 @@ func _gather_resource(object_data: Dictionary) -> void:
 		return
 	var tool = _required_tool_for_resource(object_data)
 	if tool.size() >= 2 and _inventory_count(str(tool[0])) <= 0:
-		_feedback("You need a %s" % str(tool[1]))
+		_feedback("You need a %s to gather %s." % [str(tool[1]), label])
 		return
 	if _skill_level(skill_id) < required_level:
-		_feedback("You need %s level %d for %s; it gives %s and %d XP" % [_skill_name(skill_id), required_level, label, _item_name(item_id), xp])
+		_feedback("You need %s level %d for %s; you are level %d. Reward: %s and %d XP." % [_skill_name(skill_id), required_level, label, _skill_level(skill_id), _item_name(item_id), xp])
 		return
 	if not _inventory_can_transact({}, {item_id: quantity}):
 		_feedback(_inventory_full_message(_item_name(item_id)))
 		return
 	var action_key := "gather:%s" % node_id
 	if not _action_is_ready(action_key):
-		_feedback("%s is still being gathered" % label)
+		_feedback("%s is still being gathered; wait %d seconds." % [label, _action_wait_seconds(action_key)])
 		return
 
 	_add_inventory_item(item_id, quantity)
 	var secondary_item := str(object_data.get("secondary_item_reward", ""))
 	var secondary_quantity := int(object_data.get("secondary_quantity_reward", 1))
 	var secondary_chance := float(object_data.get("secondary_drop_chance", 0.0))
+	var secondary_added := false
 	if not secondary_item.is_empty() and secondary_quantity > 0 and _chance_succeeds(action_key, secondary_chance):
-		_add_inventory_item(secondary_item, secondary_quantity)
+		secondary_added = _add_inventory_item(secondary_item, secondary_quantity)
 	var level_message := _add_xp(skill_id, xp)
 	_start_action_cooldown(action_key, float(object_data.get("base_gather_seconds", DEFAULT_ACTION_SECONDS)))
 	_mark_resource_depleted(node_id, float(object_data.get("respawn_seconds", 0.0)))
 	_record_gathering_quest_flags(skill_id, item_id)
-	var message := "Gathered %d %s; +%d %s XP" % [quantity, _item_name(item_id), xp, _skill_name(skill_id)]
-	if not level_message.is_empty():
-		message = "%s; %s" % [message, level_message]
+	var message := "%s: +%d %s; %s" % [label, quantity, _item_name(item_id), _xp_gain_text(skill_id, xp)]
+	if secondary_added:
+		message = "%s; bonus +%d %s" % [message, secondary_quantity, _item_name(secondary_item)]
+	message = _with_level_message(message, level_message)
 	_feedback(message)
 
 
@@ -1150,7 +1152,7 @@ func _process_cooking() -> void:
 			continue
 		var required_level := int(definition.get("cooking_required_level", 1))
 		if _skill_level("cooking") < required_level:
-			_feedback("You need Cooking level %d" % required_level)
+			_feedback("You need Cooking level %d to cook %s; you are level %d." % [required_level, _item_name(str(item_id)), _skill_level("cooking")])
 			return
 		var cooked_item := str(definition["cook_result"])
 		if not _inventory_can_transact({str(item_id): 1}, {cooked_item: 1}):
@@ -1158,7 +1160,7 @@ func _process_cooking() -> void:
 			return
 		var action_key := "cook:%s" % str(item_id)
 		if not _action_is_ready(action_key):
-			_feedback("Cooking is still in progress")
+			_feedback("Cooking is still in progress; wait %d seconds." % _action_wait_seconds(action_key))
 			return
 		_remove_inventory_item(str(item_id), 1)
 		_add_inventory_item(cooked_item, 1)
@@ -1166,9 +1168,8 @@ func _process_cooking() -> void:
 		var level_message := _add_xp("cooking", xp)
 		_start_action_cooldown(action_key, float(definition.get("base_cook_seconds", DEFAULT_ACTION_SECONDS)))
 		_record_quest_flag("cooked_food")
-		var message := "Cooked %s: +1 %s, +%d Cooking XP" % [_item_name(str(item_id)), _item_name(cooked_item), xp]
-		if not level_message.is_empty():
-			message = "%s; %s" % [message, level_message]
+		var message := "Cooked %s -> %s; %s" % [_item_name(str(item_id)), _item_name(cooked_item), _xp_gain_text("cooking", xp)]
+		message = _with_level_message(message, level_message)
 		_feedback(message)
 		return
 	_feedback("Select a raw fish first")
@@ -1188,7 +1189,7 @@ func _process_recipe_type(action_type: String) -> void:
 		var required_level := int(recipe.get("required_level", 1))
 		var output_item := str(recipe.get("output_item_id", ""))
 		if _skill_level(skill_id) < required_level:
-			_feedback("You need %s level %d to make %s" % [_skill_name(skill_id), required_level, str(recipe.get("display_name", recipe.get("recipe_id", output_item)))])
+			_feedback("You need %s level %d to make %s; you are level %d." % [_skill_name(skill_id), required_level, str(recipe.get("display_name", recipe.get("recipe_id", output_item))), _skill_level(skill_id)])
 			return
 		var output_quantity := int(recipe.get("output_quantity", 1))
 		if not _inventory_can_transact(recipe.get("inputs", {}), {output_item: output_quantity}):
@@ -1197,7 +1198,7 @@ func _process_recipe_type(action_type: String) -> void:
 		var recipe_id := str(recipe.get("recipe_id", output_item))
 		var action_key := "recipe:%s:%s" % [action_type, recipe_id]
 		if not _action_is_ready(action_key):
-			_feedback("%s is still in progress" % str(recipe.get("display_name", recipe_id)))
+			_feedback("%s is still in progress; wait %d seconds." % [str(recipe.get("display_name", recipe_id)), _action_wait_seconds(action_key)])
 			return
 		for input_id in recipe.get("inputs", {}).keys():
 			_remove_inventory_item(str(input_id), int(recipe["inputs"][input_id]))
@@ -1214,8 +1215,8 @@ func _process_recipe_type(action_type: String) -> void:
 			xp,
 			_skill_name(skill_id),
 		]
-		if not level_message.is_empty():
-			message = "%s; %s" % [message, level_message]
+		message = "%s (%s)" % [message, _skill_status_text(skill_id)]
+		message = _with_level_message(message, level_message)
 		_feedback(message)
 		return
 	_feedback(_select_feedback(action_type))
@@ -1251,17 +1252,24 @@ func _attack_mob(object_data: Dictionary) -> void:
 		style = "attack"
 	var damage := _combat_player_damage(style)
 	var remaining: int = max(0, int(mob_state.get("hitpoints", max_hp)) - damage)
-	_add_xp(style, damage * 4)
-	_add_xp("hitpoints", damage)
+	var style_xp := damage * 4
+	var hitpoints_xp := damage
+	var style_level_message := _add_xp(style, style_xp)
+	var hitpoints_level_message := _add_xp("hitpoints", hitpoints_xp)
 	var enemy_damage := _combat_enemy_damage(level, style, object_data)
+	var defence_xp := 0
+	var defence_level_message := ""
 	if enemy_damage > 0:
 		_combat_set_hitpoints(max(0, int(combat.get("current_hitpoints", 10)) - enemy_damage))
-		_add_xp("defence", enemy_damage * 4)
+		defence_xp = enemy_damage * 4
+		defence_level_message = _add_xp("defence", defence_xp)
 		_apply_poison_from_mob(object_data)
 
 	var status_suffix := ""
 	if not poison_message.is_empty():
 		status_suffix = "; %s" % poison_message
+	var xp_summary := _combat_xp_summary(style, style_xp, hitpoints_xp, defence_xp)
+	var level_summary := _join_non_empty([style_level_message, hitpoints_level_message, defence_level_message])
 	if remaining <= 0:
 		var defeated_state := {"hitpoints": 0, "dead": true}
 		var respawn_seconds := _mob_respawn_seconds(object_data)
@@ -1273,12 +1281,14 @@ func _attack_mob(object_data: Dictionary) -> void:
 		_record_combat_quest_flags(mob_id)
 		var drops = object_data.get("drops", [])
 		var reward_message := "drops appeared" if drops is Array and not drops.is_empty() else "it will return soon"
-		_feedback("Defeated %s; %s; you: %d/%d HP%s" % [label, reward_message, int(combat.get("current_hitpoints", 10)), _skill_level("hitpoints"), status_suffix])
+		var defeated_message := "Defeated %s; %s; %s; you %d/%d HP%s" % [label, reward_message, xp_summary, int(combat.get("current_hitpoints", 10)), _skill_level("hitpoints"), status_suffix]
+		_feedback(_with_level_message(defeated_message, level_summary))
 		return
 
 	mobs[mob_id] = {"hitpoints": remaining, "dead": false}
 	combat["mobs"] = mobs
-	_feedback("Hit %s: %d/%d HP left; you: %d/%d HP%s" % [label, remaining, max_hp, int(combat.get("current_hitpoints", 10)), _skill_level("hitpoints"), status_suffix])
+	var hit_message := "Hit %s %d dmg; %d/%d HP left; %s; you %d/%d HP%s" % [label, damage, remaining, max_hp, xp_summary, int(combat.get("current_hitpoints", 10)), _skill_level("hitpoints"), status_suffix]
+	_feedback(_with_level_message(hit_message, level_summary))
 
 
 func _pick_up_drop(object_data: Dictionary) -> void:
@@ -2172,6 +2182,45 @@ func _add_xp(skill_id: String, amount: int) -> String:
 	return ""
 
 
+func _xp_gain_text(skill_id: String, amount: int) -> String:
+	return "+%d %s XP (%s)" % [amount, _skill_name(skill_id), _skill_status_text(skill_id)]
+
+
+func _skill_status_text(skill_id: String) -> String:
+	return "%d XP, Lv %d" % [_skill_xp(skill_id), _skill_level(skill_id)]
+
+
+func _combat_xp_summary(style: String, style_xp: int, hitpoints_xp: int, defence_xp: int) -> String:
+	var parts: Array[String] = []
+	var displayed_style_xp := style_xp
+	if style == "defence":
+		displayed_style_xp += defence_xp
+	if displayed_style_xp > 0:
+		parts.append("+%d %s XP" % [displayed_style_xp, _skill_name(style)])
+	if hitpoints_xp > 0:
+		parts.append("+%d HP XP" % hitpoints_xp)
+	if defence_xp > 0 and style != "defence":
+		parts.append("+%d Defence XP" % defence_xp)
+	if parts.is_empty():
+		return "no XP gained"
+	return ", ".join(parts)
+
+
+func _with_level_message(message: String, level_message: String) -> String:
+	if level_message.strip_edges().is_empty():
+		return message
+	return "%s; %s" % [message, level_message]
+
+
+func _join_non_empty(values: Array) -> String:
+	var cleaned: Array[String] = []
+	for value in values:
+		var text := str(value).strip_edges()
+		if not text.is_empty():
+			cleaned.append(text)
+	return "; ".join(cleaned)
+
+
 func _unlock_suffix(skill_id: String, previous_level: int, new_level: int) -> String:
 	var definition = skills_data.get(skill_id, {})
 	if not (definition is Dictionary):
@@ -2467,6 +2516,13 @@ func _start_action_cooldown(action_key: String, seconds: float) -> void:
 		return
 	var adjusted_seconds: float = max(0.25, seconds * (1.0 - _action_speed_bonus()))
 	_action_cooldowns()[action_key] = _action_clock_seconds() + adjusted_seconds
+
+
+func _action_wait_seconds(action_key: String) -> int:
+	var cooldowns := _action_cooldowns()
+	if not cooldowns.has(action_key):
+		return 0
+	return max(1, int(ceil(float(cooldowns[action_key]) - _action_clock_seconds())))
 
 
 func _chance_succeeds(action_key: String, chance: float) -> bool:

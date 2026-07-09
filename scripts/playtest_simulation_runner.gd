@@ -2424,10 +2424,21 @@ func _record_panel_polish(record: Dictionary) -> void:
 		return
 	if str(snapshot.get("title", "")).strip_edges().is_empty():
 		_add_polish_flag("panel_missing_title", action_name, "Visible interaction panel had no title.", record, snapshot)
-	if int(snapshot.get("rows", 0)) <= 0:
+	if int(snapshot.get("rows", 0)) <= 0 and not _panel_snapshot_has_dialogue_content(record, snapshot):
 		_add_polish_flag("panel_empty_rows", action_name, "Visible interaction panel had no useful rows.", record, snapshot)
 	if int(snapshot.get("buttons", 0)) <= 0:
 		_add_polish_flag("panel_missing_action_buttons", action_name, "Visible interaction panel had no action buttons.", record, snapshot)
+
+
+func _panel_snapshot_has_dialogue_content(record: Dictionary, snapshot: Dictionary) -> bool:
+	var action_name := str(record.get("action", ""))
+	if action_name not in ["talk_npc", "dialogue_action"]:
+		return false
+	if int(snapshot.get("buttons", 0)) <= 0:
+		return false
+	if str(snapshot.get("title", "")).strip_edges().is_empty():
+		return false
+	return not str(record.get("feedback", "")).strip_edges().is_empty()
 
 
 func _record_quest_polish(record: Dictionary) -> void:

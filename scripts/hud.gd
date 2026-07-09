@@ -274,6 +274,7 @@ func _build_state_panel() -> void:
 	panel.offset_top = -RIGHT_PANEL_BASE_HEIGHT - 16.0
 	panel.offset_right = -RIGHT_PANEL_RIGHT_MARGIN
 	panel.offset_bottom = -16.0
+	panel.add_theme_stylebox_override("panel", _flat_style(Color(0.08, 0.09, 0.08, 0.96), Color(0.34, 0.30, 0.20, 1.0), 1, 8))
 	root_control.add_child(panel)
 
 	var margin := MarginContainer.new()
@@ -332,6 +333,7 @@ func _build_interaction_panel() -> void:
 	interaction_panel.offset_top = 58.0
 	interaction_panel.offset_right = 500.0
 	interaction_panel.offset_bottom = -74.0
+	interaction_panel.add_theme_stylebox_override("panel", _flat_style(Color(0.08, 0.09, 0.08, 0.96), Color(0.34, 0.30, 0.20, 1.0), 1, 8))
 	root_control.add_child(interaction_panel)
 
 	var margin := MarginContainer.new()
