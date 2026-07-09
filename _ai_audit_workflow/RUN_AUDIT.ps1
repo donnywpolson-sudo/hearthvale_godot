@@ -155,9 +155,14 @@ function Test-AuditQueue {
     }
     try {
         $queue = Get-Content -Raw -LiteralPath $queuePath | ConvertFrom-Json
+        $queueValidProp = $queue.PSObject.Properties['valid']
+        if ($null -ne $queueValidProp -and $queueValidProp.Value -eq $false) {
+            Add-PreflightIssue -Title 'Latest audit did not produce a valid queue' -Problem 'The latest audit failed or invalidated the improvement queue, so no queued evidence item is runnable.' -Fix 'Fix the blocking audit/check failure, then run a fresh Light or Deep audit before applying or previewing an item.'
+            return
+        }
         $queuedItems = @($queue.items | Where-Object { $_.status -eq 'queued' })
         if ($queuedItems.Count -eq 0) {
-            Add-PreflightIssue -Title 'No queued fix or review prompt' -Problem 'The latest audit queue exists, but it does not contain a queued evidence-backed fix or review-backed polish prompt.' -Fix 'Run a fresh Light or Deep audit, or review the audit report for residual gaps that need manual evidence.'
+            Add-PreflightIssue -Title 'No queued evidence item' -Problem 'The latest audit queue exists, but it does not contain a queued evidence-backed fix, review-backed polish prompt, or workflow-evidence item.' -Fix 'Run a fresh Light or Deep audit, or review the audit report for residual gaps that need manual evidence.'
         }
     } catch {
         Add-PreflightIssue -Title 'Broken audit queue' -Problem "The improvement queue could not be parsed: $queuePath. $($_.Exception.Message)" -Fix 'Run a fresh Light or Deep audit to rebuild the queue.'
@@ -257,7 +262,7 @@ function Invoke-PostAuditFixMenu {
     $repoRoot = Get-RepoRootOrNull
     $config = Read-ConfigOrNull
     if ($null -eq $repoRoot -or $null -eq $config) {
-        Write-RootStepSummary -Step 'post-audit fix menu' -Status 'skipped' -Detail 'Could not read repo/config after audit.'
+        Write-RootStepSummary -Step 'post-audit evidence menu' -Status 'skipped' -Detail 'Could not read repo/config after audit.'
         return 0
     }
 
@@ -266,7 +271,7 @@ function Invoke-PostAuditFixMenu {
         Write-Host ''
         Write-Host 'No improvement queue was produced.'
         Write-Host 'Check the latest run log and audit report for the failed step.'
-        Write-RootStepSummary -Step 'post-audit fix menu' -Status 'skipped' -Detail "Missing queue: $queuePath"
+        Write-RootStepSummary -Step 'post-audit evidence menu' -Status 'skipped' -Detail "Missing queue: $queuePath"
         return 0
     }
 
@@ -277,22 +282,23 @@ function Invoke-PostAuditFixMenu {
         Write-Host ''
         Write-Host "The improvement queue could not be read: $queuePath"
         Write-Host 'Run a fresh audit to rebuild it.'
-        Write-RootStepSummary -Step 'post-audit fix menu' -Status 'failed' -Detail $_.Exception.Message
+        Write-RootStepSummary -Step 'post-audit evidence menu' -Status 'failed' -Detail $_.Exception.Message
         return 1
     }
 
     if ($items.Count -eq 0) {
         Write-Host ''
-        Write-Host 'No evidence-backed fixes or review-backed polish prompts were found by this audit.'
+        Write-Host 'No queued evidence items were found by this audit.'
         Write-Host 'The audit still wrote the report and residual gaps for review.'
-        Write-RootStepSummary -Step 'post-audit fix menu' -Status 'pass with gaps' -Detail '0 queued fix/review prompt(s).'
+        Write-RootStepSummary -Step 'post-audit evidence menu' -Status 'pass with gaps' -Detail '0 queued evidence item(s).'
         return 0
     }
 
     Write-Host ''
     $codeCount = @($items | Where-Object { $_.lane -eq 'evidence-backed code fix' }).Count
     $reviewCount = @($items | Where-Object { $_.lane -eq 'review-backed polish fix' }).Count
-    Write-Host "Queued fixes/prompts found: $($items.Count) ($codeCount evidence-backed, $reviewCount review-backed)"
+    $workflowCount = @($items | Where-Object { $_.lane -eq 'workflow-evidence-improvement' }).Count
+    Write-Host "Queued evidence items found: $($items.Count) ($codeCount evidence-backed code, $reviewCount review-backed polish, $workflowCount workflow-evidence)"
     foreach ($item in @($items | Select-Object -First 5)) {
         $lane = if ($null -ne $item.PSObject.Properties['lane']) { $item.lane } else { 'evidence-backed code fix' }
         Write-Host "- $($item.id): $($item.title) [$lane, $($item.area), score $($item.score)]"
@@ -301,8 +307,8 @@ function Invoke-PostAuditFixMenu {
         Write-Host "- ...and $($items.Count - 5) more"
     }
     Write-Host ''
-    Write-Host '1. Apply next fix/review now'
-    Write-Host '2. Show next fix/review prompt only'
+    Write-Host '1. Apply next queued evidence item now'
+    Write-Host '2. Show next queued evidence prompt only'
     Write-Host '3. Close'
     Write-Host ''
     $fixChoice = Read-Host 'Choose 1-3'
@@ -310,12 +316,13 @@ function Invoke-PostAuditFixMenu {
     switch ($fixChoice) {
         '1' {
             if (-not (Invoke-Preflight -NeedsGodot $false -NeedsCodex $true -NeedsAuditQueue $true -NeedsCleanApply $true -AllowDirtyApply $AllowDirtyApply)) {
-                Write-RootStepSummary -Step 'post-audit apply fix' -Status 'failed' -Detail 'Codex or queue preflight failed.'
+                Write-RootStepSummary -Step 'post-audit apply evidence item' -Status 'failed' -Detail 'Codex or queue preflight failed.'
                 return 1
             }
             & (Join-Path $internal 'run_improvement_pass.ps1') -PrintPrompt -RunCodex -AllowDirtyApply:$AllowDirtyApply
             $applyExitCode = Get-SafeLastExitCode
-            Write-RootStepSummary -Step 'post-audit apply fix' -Status ($(if ($applyExitCode -eq 0) { 'passed' } else { 'failed' })) -Detail "run_improvement_pass exit code $applyExitCode"
+            $applyStatus = if ($applyExitCode -eq 0) { 'passed' } else { 'failed' }
+            Write-RootStepSummary -Step 'post-audit apply evidence item' -Status $applyStatus -Detail "run_improvement_pass exit code $applyExitCode"
             return $applyExitCode
         }
         '2' {
@@ -329,28 +336,29 @@ function Invoke-PostAuditFixMenu {
             Write-Host ''
             Write-Host 'Prompt shown. What now?'
             Write-Host ''
-            Write-Host '1. Apply this fix/review now'
+            Write-Host '1. Apply this queued evidence item now'
             Write-Host '2. Close'
             Write-Host ''
             $afterPromptChoice = Read-Host 'Choose 1-2'
             if ($afterPromptChoice -eq '1') {
                 if (-not (Invoke-Preflight -NeedsGodot $false -NeedsCodex $true -NeedsAuditQueue $true -NeedsCleanApply $true -AllowDirtyApply $AllowDirtyApply)) {
-                    Write-RootStepSummary -Step 'post-prompt apply fix' -Status 'failed' -Detail 'Codex or queue preflight failed.'
+                    Write-RootStepSummary -Step 'post-prompt apply evidence item' -Status 'failed' -Detail 'Codex or queue preflight failed.'
                     return 1
                 }
                 & (Join-Path $internal 'run_improvement_pass.ps1') -RunCodex -AllowDirtyApply:$AllowDirtyApply
                 $afterPromptApplyExitCode = Get-SafeLastExitCode
-                Write-RootStepSummary -Step 'post-prompt apply fix' -Status ($(if ($afterPromptApplyExitCode -eq 0) { 'passed' } else { 'failed' })) -Detail "run_improvement_pass exit code $afterPromptApplyExitCode"
+                $afterPromptApplyStatus = if ($afterPromptApplyExitCode -eq 0) { 'passed' } else { 'failed' }
+                Write-RootStepSummary -Step 'post-prompt apply evidence item' -Status $afterPromptApplyStatus -Detail "run_improvement_pass exit code $afterPromptApplyExitCode"
                 return $afterPromptApplyExitCode
             }
 
-            Write-Host 'Closed without applying a fix/review.'
+            Write-Host 'Closed without applying a queued evidence item.'
             Write-RootStepSummary -Step 'post-prompt apply choice' -Status 'skipped' -Detail 'User closed after previewing the prompt.'
             return 0
         }
         default {
-            Write-Host 'Closed without applying a fix.'
-            Write-RootStepSummary -Step 'post-audit fix menu' -Status 'skipped' -Detail 'User closed without applying a fix.'
+            Write-Host 'Closed without applying a queued evidence item.'
+            Write-RootStepSummary -Step 'post-audit evidence menu' -Status 'skipped' -Detail 'User closed without applying a queued evidence item.'
             return 0
         }
     }
@@ -381,7 +389,7 @@ if ($interactive) {
 try {
     if ($NextFix) {
         if (-not (Invoke-Preflight -NeedsGodot $false -NeedsCodex $true -NeedsAuditQueue $true -NeedsCleanApply $true -AllowDirtyApply $AllowDirtyApply)) {
-            Write-RootStepSummary -Step 'next fix preflight' -Status 'failed' -Detail 'No runnable evidence-backed fix or review-backed polish prompt is available.'
+            Write-RootStepSummary -Step 'next evidence item preflight' -Status 'failed' -Detail 'No runnable queued evidence item is available.'
             Pause-IfInteractive -Interactive $interactive
             exit 1
         }

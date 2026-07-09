@@ -13,6 +13,11 @@ if (-not $SkipAudit) {
     & (Join-Path $PSScriptRoot 'run_deep_audit.ps1') -Tier $Tier
     $exitCode = Get-SafeLastExitCode
     if ($exitCode -ne 0) {
+        try {
+            & (Join-Path $PSScriptRoot 'build_improvement_queue.ps1') | Out-Host
+        } catch {
+            Write-Host "Queue invalidation after failed audit did not complete: $($_.Exception.Message)"
+        }
         Write-Host 'fail'
         exit $exitCode
     }
@@ -44,5 +49,5 @@ if ($MaxPasses -gt 0) {
 } else {
     Write-Host 'pass'
     Write-Host 'Audit and queue generation complete.'
-    Write-Host 'Interactive runs ask what to do next when evidence-backed fixes or review-backed polish prompts are queued. Non-interactive runs can use .\_ai_audit_workflow\RUN_AUDIT.ps1 -NextFix.'
+    Write-Host 'Interactive runs ask what to do next when queued evidence items are available. Non-interactive runs can use .\_ai_audit_workflow\RUN_AUDIT.ps1 -NextFix.'
 }

@@ -22,7 +22,7 @@ Before it does anything expensive, the workflow checks the basics:
 - the workflow is inside the Hearthvale Godot project
 - Godot exists before Light or Deep audit
 - Light or Deep has a positive simulation timeout budget
-- the repo is clean before apply-now unless `-AllowDirtyApply` is passed explicitly
+- the repo is clean before apply-now unless `-AllowDirtyApply` is passed explicitly as an exceptional override
 
 If something is wrong, it prints what happened and exactly how to fix it. Preflight failures do not run audit, simulation, smoke, or apply steps, but the launcher transcript may already have been written.
 
@@ -35,7 +35,19 @@ Use `Light audit` when you only want a quick audit. It runs visual capture, smok
 
 Use `Deep audit` when you want the overnight audit. It uses the coverage preset with 4,500 runs / 1,800 steps, plus the same visual capture and validation, with a 12-hour stop budget.
 
-After Light or Deep finishes, interactive runs check the improvement queue. If evidence-backed fixes were found, the workflow asks whether to apply the next fix now, show the next fix prompt only, or close. If none were found, it says that directly.
+After Light or Deep finishes, interactive runs check the improvement queue. If queued evidence items were found, the workflow asks whether to apply the next lane-scoped item now, show the next queued evidence prompt only, or close. If the audit failed, no queued item from that run is runnable. If none were found, it says that directly.
+
+Queue lanes are intentionally separate:
+
+- `evidence-backed code fix` is the only lane allowed to change gameplay code, and it requires current-run evidence plus replay/hash metadata.
+- `review-backed polish fix` can change gameplay/UI only after concrete screenshots, logs, telemetry, code, data, manual notes, smokes, reports, or findings are named.
+- `workflow-evidence-improvement` can change only audit workflow, report, queue, prompt, handoff, or smoke-doc routing files.
+
+Manual playtesting is a workflow-evidence lane, not an apply-now gameplay lane. To close the manual-playtesting evidence gap, use `_internal/templates/manual_playtest_notes.md` for a bounded 20-30 minute pass through `scenes/main.tscn`: start/load, gather, process/craft, sell/use, quest, combat/recovery, bank/shop, inventory pressure, and save/load continuity. Completed notes must name the git status/build context, route played, observed behavior, concrete defects if any, subjective notes, and stop condition. Manual notes can support later review-backed or evidence-backed work only after a separate item verifies the exact defect against current files or focused checks.
+
+Audio review is also a workflow-evidence lane. To close the audio evidence gap, use `_internal/templates/audio_review_notes.md` for a bounded 10-15 minute pass through `scenes/main.tscn`: start/load, UI panels, bank/shop/dialogue, gathering, processing/crafting, combat/recovery, buy/sell, save/load, pause or focus behavior if available, and scene/start-flow transitions if practical. Completed notes must separate missing or wrong cues, timing, overlap, mix balance, bus/volume behavior, pause/focus behavior, spatial behavior if used, unsupported surfaces, and concrete defects. Audio notes can support later review-backed or evidence-backed work only after a separate item verifies the exact defect against current files or focused checks.
+
+Do not use `-AllowDirtyApply` while unrelated gameplay/content files are dirty unless you intentionally accept that the workflow may refuse to mark restricted-lane items handled.
 
 Typed commands still work if you want them:
 

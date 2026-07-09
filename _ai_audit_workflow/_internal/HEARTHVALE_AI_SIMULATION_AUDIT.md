@@ -122,7 +122,8 @@ Each broad audit pass must check these points before drawing conclusions:
 7. Visual, audio, subjective fun, onboarding comprehension, export parity, and player-feel claims are not inferred from simulation-only evidence.
 8. Any regression comparison uses comparable seeds, scenario mix, balance profile, runner mode, replay metadata, and compatible build/data/script hashes.
 9. Findings that drive implementation include the evidence fields required by the report schema below.
-10. The final report separates proven facts, partial evidence, unsupported areas, and next recommendations.
+10. Missing screenshot review, audio/manual/export evidence, telemetry reliability, and report-quality issues are routed as evidence gaps or audit workflow improvements, not gameplay defects.
+11. The final report separates proven facts, partial evidence, unsupported areas, and next recommendations.
 
 ## Coverage Classifications
 
@@ -150,6 +151,8 @@ Use these lanes to structure audit reports and future simulation/smoke coverage.
 | Focused smokes | Independent smoke scripts in `docs/smoke_verification_workflow.md`. | Protected behavior for data, gameplay, save/load, UI, visuals, debug tools. | Long-run balance or subjective quality. |
 | Visual screenshots | Real rendered captures reviewed by AI or human. | Overlap, clipping, missing assets, low contrast, blank panels, z-order issues. | Fun, comprehension, audio, final art quality. |
 | Manual playtesting | Human play through the actual game. | Fun, pacing, clarity, reward feel, grind feel. | High-volume regression coverage. |
+
+Manual playtest evidence must use `_ai_audit_workflow/_internal/templates/manual_playtest_notes.md` or an equivalent note with the same fields. A valid bounded note names the repo/build context, git status summary, play route, observed behavior, concrete defects if any, subjective notes, and stop condition. Manual notes can prove observed play-feel and comprehension issues, but they do not authorize gameplay, content, data, scene, asset, balance, or save-schema edits without a separate implementation item and current supporting evidence.
 
 Use these detailed areas in reports. Mark unsupported surfaces as `not supported`, rather than inventing requirements.
 
@@ -182,6 +185,8 @@ Use these detailed areas in reports. Mark unsupported surfaces as `not supported
 ### Audio Coverage Details
 
 Use this table when reviewing audio evidence from manual play, future capture workflows, Godot warnings, or targeted smoke/simulation instrumentation. Mark unsupported surfaces as `not supported`.
+
+Audio review evidence must use `_ai_audit_workflow/_internal/templates/audio_review_notes.md` or an equivalent note with the same fields. A valid bounded note names the repo/build context, git status summary, audio device/output, volume settings, play route, observed audio behavior, concrete defects if any, unsupported surfaces, and stop condition. Audio notes can prove observed cue, timing, mix, bus, pause/focus, scene-transition, or spatial-audio issues, but they do not authorize gameplay, content, data, scene, asset, bus, import, balance, script, or save-schema edits without a separate implementation item and current supporting evidence.
 
 | Area | What to audit |
 | --- | --- |
@@ -229,6 +234,7 @@ Do not run broad Godot smoke batches, visual capture, or strategy simulation unl
 The audit report should use this shape when recording a current run:
 
 - `Report date`: local date of the audit report.
+- `Blocking Result`: the top-line verdict. `fail` overrides passing screenshot, simulation, or smoke rows and must not produce runnable queued evidence items.
 - `Evidence used`: commands, generated artifact paths, screenshot folders, manual notes, and tracked files inspected.
 - `Current repo state`: `git status --short` summary and any dirty-file caveats.
 - `Minimum coverage bundle status`: visible capture, strategy simulation, focused-smoke matrix, and `git diff --check`, each marked passed, failed, skipped, or out of scope with a reason.
@@ -253,11 +259,13 @@ Do not include run-specific findings in this durable spec.
 ## Implementation Guardrails
 
 - Generated simulation prompts, generated report summaries, scorecards, performance observations, polish telemetry, and scenario probes are advisory evidence, not direct implementation instructions.
+- A failed audit invalidates the improvement queue for apply/preview purposes until a fresh run ends in `pass` or `pass with gaps`.
 - No-code-change is a valid audit result when evidence is weak, stale, unsupported, or already covered.
 - Reject broad gameplay implementation from generated prompts unless findings are verified against current code, data, replay hashes, focused smokes, screenshots, or manual review.
 - Compare replay hashes before using a replay to close, dismiss, or regress an issue. Regression comparisons require comparable seed, scenario mix, balance profile, runner mode, and compatible build/data/script hashes.
 - Use focused smokes for protected behavior. Promote stable deterministic scenario probes to focused smokes only when their expected behavior is intentional and durable.
 - Use screenshots or manual review for UI, visual, audio, comprehension, and play-feel claims.
+- Keep improvement queue lanes distinct: evidence-backed code fixes first, review-backed polish prompts second, and workflow-evidence-improvement items as audit-harness/report/evidence work only. Workflow evidence items must not authorize gameplay, content, data, scene, asset, balance, or save-schema edits.
 - Preserve unrelated dirty worktree changes.
 - Keep improvements in the existing launcher, runner, report, smoke, and visual-review workflow instead of creating a parallel harness.
 - Keep original Hearthvale naming, data, visuals, and progression intent; do not copy proprietary names, assets, maps, dialogue, formulas, or branded terms from inspiration games.

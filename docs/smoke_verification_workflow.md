@@ -29,6 +29,22 @@ Use the visible-render capture script when UI or visual confidence needs real sc
 
 Expected output is one PNG per captured state under each viewport subfolder plus `visual_review_prompt.md` at the timestamp root. The script samples each image and exits nonzero if a capture is blank or near-blank. Use the generated prompt for concrete visual defects only: overlap, clipping, missing assets, low contrast, blank panels, confusing states, bad z-order, cropped controls, or viewport framing problems. Do not use screenshot review as proof of fun, balance, audio quality, or player comprehension.
 
+## Manual Playtest Evidence
+
+Manual playtesting covers surfaces that automation cannot prove: input feel, comprehension, pacing, reward feel, grind fatigue, and whether recovery paths are understandable. Use it as an evidence path, not as permission to change gameplay directly.
+
+Use `_ai_audit_workflow/_internal/templates/manual_playtest_notes.md` for a bounded 20-30 minute pass. The route should cover start/load, gathering at least two resource types, processing or crafting, selling or using an item, one NPC quest, one combat/recovery loop, bank and shop use, inventory pressure recovery, and save/load continuity. Stop at the timebox, a crash, a softlock, or one severe blocker.
+
+Completed notes should record repo/build context, git status summary, route actually played, concrete defects with exact observed behavior, subjective notes separately from defects, and remaining evidence gaps. A manual note can close a `workflow-evidence-manual-playtesting` queue item when the evidence path is documented or when completed notes are attached, but it must not authorize gameplay, content, data, scene, asset, or save changes by itself. Any implementation follow-up needs a separate queue item with current evidence.
+
+## Audio Review Evidence
+
+Audio review covers surfaces that headless simulation and screenshots cannot prove: missing or wrong cues, timing, overlap, mix balance, bus or volume behavior, pause/focus behavior, scene-transition audio, and spatial audio if used. Use it as an evidence path, not as permission to change gameplay, scripts, assets, buses, or import settings directly.
+
+Use `_ai_audit_workflow/_internal/templates/audio_review_notes.md` for a bounded 10-15 minute pass. The route should cover start/load, inventory/equipment/state panels, bank/shop/NPC dialogue, gathering, processing or crafting, combat/recovery, buy/sell, save/load if practical, pause or focus behavior if available, and scene/start-flow transitions if practical. Stop at the timebox, no audible output, a crash, a softlock, or one severe blocker.
+
+Completed notes should record repo/build context, git status summary, audio device/output, volume settings, route actually played, concrete defects with exact observed behavior, subjective mix notes separately from defects, unsupported surfaces, and remaining evidence gaps. An audio note can close a `workflow-evidence-audio` queue item when the evidence path is documented or when completed notes are attached, but it must not authorize gameplay, content, data, scene, asset, bus, import, or save changes by itself. Any implementation follow-up needs a separate queue item with current evidence.
+
 ## Headless Playtest Simulation
 
 Use the Godot-native playtest simulation runner for longer seeded automated playtest simulation bot runs that record bugs, softlocks, QOL annoyances, and balance signals. The clickable launcher publishes user-facing outputs directly under `.godot/ai_simulation/`, and detailed generated reports stay under `.godot/ai_simulation/archive/`.
@@ -106,6 +122,10 @@ Read-only publish artifact checklist:
 - Confirm `_working/current` is not cited as public evidence after a later run; it is disposable working output.
 
 Generated reports include a `trust` block with `run_strength`, `coverage_scope`, `implementation_ready`, `harness_status`, `finding_status`, `latest_publish_status`, and replay hash guidance. `summary.json` also includes a `scorecard` block with advisory 0-100 category scores, confidence labels, score basis text, and the underlying metrics used for the score. `publish_smoke` reports are not implementation-ready and generated Markdown says so in the first screen. Publishing blocks lower-coverage output from becoming the most recent public output by default; set `HV_SIM_ALLOW_LATEST_DOWNGRADE=1` to allow that replacement, or `HV_SIM_REQUIRE_PUBLISH_LATEST=1` when a blocked publish should fail automation. When publishing is blocked and `HV_SIM_REQUIRE_PUBLISH_LATEST` is not set, the command may still exit successfully while leaving the public prompt/JSON pair unchanged. Replay evidence is valid only for the code/data hashes recorded in `replay_manifest.json`; if `build_hash`, any `data_hashes`, or any `script_hashes` differ, the replay is under changed code and cannot close the original issue by itself.
+
+The improvement queue has distinct lanes. `evidence-backed code fix` items stay first priority and require concrete current-run evidence plus replay/hash metadata before edits. `review-backed polish fix` items are bounded visual/performance review prompts and must confirm a defect from screenshots, logs, telemetry, code, data, manual notes, smokes, reports, or findings before editing. `workflow-evidence-improvement` items are audit-harness or evidence-coverage work only; missing screenshot review, missing audio/manual/export evidence, telemetry false positives, and report-quality gaps must be reported as evidence gaps or workflow items, not gameplay defects. A failed audit invalidates the queue for apply/preview purposes until a fresh audit ends in `pass` or `pass with gaps`.
+
+Audit reports are verdict-first: `Workflow status: fail` and the `Blocking Result` section override any passing visual, simulation, or smoke rows below them. Do not use a failed run to justify queued gameplay, polish, or workflow evidence edits.
 
 ## Quality Tooling Ownership
 

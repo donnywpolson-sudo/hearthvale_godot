@@ -112,6 +112,102 @@ function Get-RequiredLineValue {
     return $match.Groups[1].Value.Trim()
 }
 
+function Get-StatusPathValues {
+    param([string[]] $StatusLines)
+    $paths = New-Object System.Collections.Generic.List[string]
+    foreach ($line in @($StatusLines)) {
+        if ($line.Length -lt 4) {
+            continue
+        }
+        $pathText = $line.Substring(3).Trim()
+        if ($pathText.Contains(' -> ')) {
+            foreach ($part in @($pathText -split '\s+->\s+')) {
+                if ($part.Trim().Length -gt 0) {
+                    $paths.Add($part.Trim())
+                }
+            }
+        } elseif ($pathText.Length -gt 0) {
+            $paths.Add($pathText)
+        }
+    }
+    return @($paths.ToArray())
+}
+
+function Get-ResultFileChangedPaths {
+    param([Parameter(Mandatory)][string] $FilesChanged)
+    $paths = New-Object System.Collections.Generic.List[string]
+    $parts = @($FilesChanged -split '[,;\r\n]+')
+    foreach ($part in $parts) {
+        $candidate = $part.Trim()
+        $candidate = $candidate -replace '^[\-\*\s]+', ''
+        $candidate = $candidate.Trim(' ', '`', '"', "'")
+        if ($candidate.Length -eq 0) {
+            continue
+        }
+        if ($candidate -match '^(none|no files|n/a)$') {
+            continue
+        }
+        if ($candidate -match '[\\/]' -or $candidate -match '\.(ps1|md|json|gd|tscn|tres|import|uid)$') {
+            $paths.Add($candidate)
+        }
+    }
+    return @($paths.ToArray())
+}
+
+function Test-WorkflowEvidencePathAllowed {
+    param([Parameter(Mandatory)][string] $Path)
+    $normalized = $Path.Replace('\', '/').Trim().ToLowerInvariant()
+    while ($normalized.StartsWith('./')) {
+        $normalized = $normalized.Substring(2)
+    }
+    if ($normalized.StartsWith('c:/users/donny/desktop/hearthvale_godot/')) {
+        $normalized = $normalized.Substring('c:/users/donny/desktop/hearthvale_godot/'.Length)
+    }
+    return (
+        $normalized.StartsWith('_ai_audit_workflow/') -or
+        $normalized -eq 'docs/smoke_verification_workflow.md' -or
+        $normalized -eq 'codex_handoff.md'
+    )
+}
+
+function Assert-WorkflowEvidenceScope {
+    param(
+        [Parameter(Mandatory)] $ResultSummary,
+        [Parameter(Mandatory)][string[]] $PreGitStatus,
+        [Parameter(Mandatory)][bool] $AllowDirtyApply
+    )
+    if ($ResultSummary.outcome -ne 'fixed') {
+        return
+    }
+
+    if ($AllowDirtyApply) {
+        $restrictedPreExisting = @(Get-StatusPathValues -StatusLines $PreGitStatus | Where-Object { -not (Test-WorkflowEvidencePathAllowed -Path $_) })
+        if ($restrictedPreExisting.Count -gt 0) {
+            throw "Refusing to mark workflow-evidence item handled: restricted non-workflow paths were already dirty under -AllowDirtyApply, so this run cannot prove gameplay/content files were untouched. Preserve or isolate those changes first."
+        }
+    }
+
+    $changedPaths = @(Get-ResultFileChangedPaths -FilesChanged $ResultSummary.filesChanged)
+    if ($changedPaths.Count -eq 0) {
+        throw 'Workflow-evidence items with Outcome fixed must list concrete changed file paths.'
+    }
+    $blocked = @($changedPaths | Where-Object { -not (Test-WorkflowEvidencePathAllowed -Path $_) })
+    if ($blocked.Count -gt 0) {
+        throw "Workflow-evidence items may only change audit workflow, smoke-doc routing, or handoff files. Blocked path(s): $($blocked -join ', ')"
+    }
+}
+
+function Assert-ReviewEvidenceNamed {
+    param([Parameter(Mandatory)] $ResultSummary)
+    if ($ResultSummary.outcome -ne 'fixed') {
+        return
+    }
+    $evidence = [string]$ResultSummary.evidenceChecked
+    if ($evidence.Length -lt 20 -or $evidence -notmatch '(?i)(\.png|\.log|\.json|\.gd|\.tscn|screenshot|visual|telemetry|manual|code|data|smoke|report|finding)') {
+        throw 'Review-backed polish fixes must name concrete reviewed evidence such as screenshots, logs, telemetry, code, data, manual notes, smokes, reports, or findings.'
+    }
+}
+
 function Assert-ResultSummaryForQueueItem {
     param(
         [Parameter(Mandatory)][string] $Path,
@@ -153,12 +249,16 @@ function Assert-ResultSummaryForQueueItem {
     if ($outcome -eq 'no-code-change' -and $Lane -eq 'evidence-backed code fix') {
         [void](Get-RequiredLineValue -Text $text -Label 'No code change reason')
     }
-    return [pscustomobject]@{
+    $summary = [pscustomobject]@{
         outcome = $outcome
         evidenceChecked = $evidenceChecked
         filesChanged = $filesChanged
         validationRun = $validationRun
     }
+    if ($Lane -eq 'review-backed polish fix') {
+        Assert-ReviewEvidenceNamed -ResultSummary $summary
+    }
+    return $summary
 }
 
 function Invoke-DiffCheckOrThrow {
@@ -177,12 +277,26 @@ function Invoke-DiffCheckOrThrow {
 
 if (-not (Test-Path -LiteralPath $queuePath)) {
     Write-Host 'No improvement queue found yet.'
-    Write-Host 'Choose Light audit or Deep audit first, then come back to Next fix/review prompt.'
-    Write-StepSummary -Step 'next fix prompt' -Status 'skipped' -LogPath $queuePath -Detail 'No improvement queue found.'
+    Write-Host 'Choose Light audit or Deep audit first, then come back to Next queued evidence prompt.'
+    Write-StepSummary -Step 'next evidence prompt' -Status 'skipped' -LogPath $queuePath -Detail 'No improvement queue found.'
     exit 0
 }
 
 $queue = Get-Content -Raw -LiteralPath $queuePath | ConvertFrom-Json
+$queueValidProp = $queue.PSObject.Properties['valid']
+if ($null -ne $queueValidProp -and $queueValidProp.Value -eq $false) {
+    @'
+# Improvement Queue Invalid
+
+The latest audit failed or invalidated the queue. No queued evidence item is runnable from this state.
+
+Fix the blocking audit/check failure, then run a fresh Light or Deep audit before applying or previewing an item.
+'@ | Set-Content -LiteralPath $promptPath -Encoding UTF8
+    Write-Host 'blocked'
+    Write-Host "The improvement queue is invalid. Prompt written: $promptPath"
+    Write-StepSummary -Step 'next evidence prompt' -Status 'blocked' -LogPath $promptPath -Detail 'Latest queue is invalid; run a fresh audit.'
+    exit 1
+}
 $items = @($queue.items)
 if ($FindingId.Trim().Length -gt 0) {
     $item = $items | Where-Object { $_.id -eq $FindingId } | Select-Object -First 1
@@ -194,19 +308,26 @@ if ($null -eq $item) {
     @'
 # No Queued Improvement Item
 
-The latest queue has no queued evidence-backed implementation finding or review-backed polish prompt.
+The latest queue has no queued evidence-backed implementation finding, review-backed polish prompt, or workflow/evidence improvement.
 
 Run a manual evidence pass for the residual gaps, or run a fresh deep/full audit after the current batch is complete.
 '@ | Set-Content -LiteralPath $promptPath -Encoding UTF8
     Write-Host 'pass with gaps'
     Write-Host "No queued item. Prompt written: $promptPath"
-    Write-StepSummary -Step 'next fix prompt' -Status 'pass with gaps' -LogPath $promptPath -Detail 'No queued evidence-backed or review-backed item.'
+    Write-StepSummary -Step 'next evidence prompt' -Status 'pass with gaps' -LogPath $promptPath -Detail 'No queued evidence-backed, review-backed, or workflow/evidence item.'
     exit 0
 }
 
 $lane = if ($null -ne $item.PSObject.Properties['lane']) { [string]$item.lane } else { 'evidence-backed code fix' }
 $isReviewBacked = $lane -eq 'review-backed polish fix'
-$selectionLabel = if ($isReviewBacked) { 'review-backed polish prompt' } else { 'evidence-backed fix' }
+$isWorkflowEvidenceImprovement = $lane -eq 'workflow-evidence-improvement'
+if ($isWorkflowEvidenceImprovement) {
+    $selectionLabel = 'workflow/evidence improvement'
+} elseif ($isReviewBacked) {
+    $selectionLabel = 'review-backed polish prompt'
+} else {
+    $selectionLabel = 'evidence-backed fix'
+}
 $queueGeneratedAt = [string](Get-ObjectProperty -Object $queue -Name 'generatedAt' -Default '')
 $queueSourceRunId = [string](Get-ObjectProperty -Object $queue -Name 'sourceRunId' -Default '')
 $queueSourceFindings = [string](Get-ObjectProperty -Object $queue -Name 'sourceFindings' -Default '')
@@ -220,7 +341,7 @@ $replayCommand = [string](Get-ObjectProperty -Object $item -Name 'replayCommand'
 $buildHash = [string](Get-ObjectProperty -Object $item -Name 'buildHash' -Default '')
 $snapshotPath = [string](Get-ObjectProperty -Object $item -Name 'snapshotPath' -Default '')
 $stateDigest = [string](Get-ObjectProperty -Object $item -Name 'stateDigest' -Default '')
-if (-not $isReviewBacked) {
+if ($lane -eq 'evidence-backed code fix') {
     $hasEvidenceSource = $evidenceSource.Trim().Length -gt 0
     $hasReplayPath = $reproduction.Trim().Length -gt 0 -or $replayCommand.Trim().Length -gt 0
     $hasHashEvidence = $buildHash.Trim().Length -gt 0
@@ -238,11 +359,19 @@ Run a fresh Light or Deep audit before applying this fix so the prompt can inclu
 "@ | Set-Content -LiteralPath $promptPath -Encoding UTF8
         Write-Host 'blocked'
         Write-Host "Queue item $($item.id) is missing required replay/hash evidence. Prompt invalidated: $promptPath"
-        Write-StepSummary -Step 'next fix prompt' -Status 'blocked' -LogPath $promptPath -Detail 'Queue item lacks the hardened evidence contract; run a fresh audit.'
+        Write-StepSummary -Step 'next evidence prompt' -Status 'blocked' -LogPath $promptPath -Detail 'Queue item lacks the hardened evidence contract; run a fresh audit.'
         exit 1
     }
 }
-$reviewRules = if ($isReviewBacked) {
+$reviewRules = if ($isWorkflowEvidenceImprovement) {
+@'
+- This is audit workflow/evidence-coverage work, not a gameplay or content fix.
+- First inspect the cited findings, gaps, reports, workflow scripts, and docs.
+- Edit only audit workflow, report, queue, prompt, smoke-doc, or evidence-routing files if a small workflow improvement is justified.
+- Do not change gameplay data, scenes, assets, save schema, player-facing gameplay, balance, or content from this item.
+- If the gap requires human/audio/export/manual evidence rather than code, do not fake proof; document or route the evidence path instead.
+'@
+} elseif ($isReviewBacked) {
 @'
 - This is review-backed, not already-proven code evidence.
 - First inspect the cited screenshots/logs/telemetry.
@@ -328,7 +457,7 @@ $($item.recommendedAction)
 Before editing:
 - Send a short user-facing message explaining exactly what is being fixed.
 - Include the finding id, lane, area, score, evidence, and the intended smallest action.
-- Then perform only that fix or review.
+- Then perform only that lane-scoped action.
 
 Rules:
 - Confirm repo path and git status first.
@@ -352,7 +481,7 @@ $prompt | Set-Content -LiteralPath $promptPath -Encoding UTF8
 $promptArchivePath = Copy-QueueArtifact -SourcePath $promptPath -ItemId $item.id -Kind 'prompt'
 if ($MenuPreview) {
     Write-Host ''
-    Write-Host 'Next fix/review preview'
+    Write-Host 'Next queued evidence preview'
     Write-Host ''
     Write-Host "Finding id: $($item.id)"
     Write-Host "Lane: $lane"
@@ -373,7 +502,7 @@ if ($MenuPreview) {
     Write-Host ''
     Write-Host "Next improvement prompt: $promptPath"
     Write-Host "Archived improvement prompt: $promptArchivePath"
-    Write-StepSummary -Step 'next fix prompt' -Status 'passed' -LogPath $promptArchivePath -Detail "Prepared finding $($item.id): $($item.title)"
+    Write-StepSummary -Step 'next evidence prompt' -Status 'passed' -LogPath $promptArchivePath -Detail "Prepared finding $($item.id): $($item.title)"
 }
 if ($PrintPrompt) {
     Get-Content -Raw -LiteralPath $promptPath
@@ -401,6 +530,9 @@ if ($RunCodex) {
         exit $exitCode
     }
     $resultSummary = Assert-ResultSummaryForQueueItem -Path $resultPath -Item $item -Lane $lane
+    if ($lane -eq 'workflow-evidence-improvement') {
+        Assert-WorkflowEvidenceScope -ResultSummary $resultSummary -PreGitStatus $preStatus -AllowDirtyApply:$AllowDirtyApply
+    }
     $resultArchivePath = Copy-QueueArtifact -SourcePath $resultPath -ItemId $item.id -Kind 'result'
     Write-Host "Archived result summary: $resultArchivePath"
     Invoke-DiffCheckOrThrow -RepoRoot $repoRoot
