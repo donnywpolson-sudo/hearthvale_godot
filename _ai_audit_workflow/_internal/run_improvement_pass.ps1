@@ -376,12 +376,14 @@ $reviewRules = if ($isWorkflowEvidenceImprovement) {
 - This is review-backed, not already-proven code evidence.
 - First inspect the cited screenshots/logs/telemetry.
 - Implement a change only if that review confirms a concrete defect.
+- If the confirmed defect is a missing gameplay interaction or progression gap, prefer the smallest original Hearthvale addition that completes the existing loop; do not invent a broad new system.
 - If review finds no concrete defect, do not edit; report that no fix was applied.
 '@
 } else {
 @'
 - This is evidence-backed code work.
 - Implement the smallest fix for the queued finding.
+- If the evidence identifies an incomplete gameplay loop, a small additive gameplay improvement is allowed when it directly resolves this finding and reuses existing project patterns.
 '@
 }
 

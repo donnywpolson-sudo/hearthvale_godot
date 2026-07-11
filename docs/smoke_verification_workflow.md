@@ -57,7 +57,7 @@ Creating or documenting this evidence path does not run an export, create build 
 
 Use the Godot-native playtest simulation runner for longer seeded automated playtest simulation bot runs that record bugs, softlocks, QOL annoyances, and balance signals. The clickable launcher publishes user-facing outputs directly under `.godot/ai_simulation/`, and detailed generated reports stay under `.godot/ai_simulation/archive/`.
 
-For the simplest workflow, run `_ai_audit_workflow\RUN_AUDIT.ps1`. It is the root workflow entry point; supporting launchers, reports, and config live under `_ai_audit_workflow\_internal`.
+For the simplest workflow, run `_ai_audit_workflow\RUN_AUDIT.ps1`. It performs one bounded Light audit, applies the highest-priority evidence-backed improvement through Codex when available, and runs a fresh Light verification audit. Use `-PlanOnly` for audit-only review, `-MaxPasses 2` or `-MaxPasses 3` for an explicitly bounded batch, and `-Manual` for the review menu. Supporting launchers, reports, and config live under `_ai_audit_workflow\_internal`.
 
 Clickable tiers:
 

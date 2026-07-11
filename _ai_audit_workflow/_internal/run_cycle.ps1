@@ -2,6 +2,9 @@ param(
     [ValidateSet('Light', 'Deep')]
     [string] $Tier = 'Light',
     [int] $MaxPasses = 0,
+    [switch] $AutoImprove,
+    [switch] $VerifyAfterFix,
+    [switch] $AllowDirtyApply,
     [switch] $SkipAudit
 )
 
@@ -39,15 +42,54 @@ $reviewBackedCount = [int](Get-ObjectProperty -Object $queue -Name 'reviewBacked
 Write-StepSummary -Step 'improvement queue build' -Status 'passed' -LogPath $queuePath -Detail "$queueCount queued item(s): $evidenceBackedCount evidence-backed, $reviewBackedCount review-backed"
 
 if ($MaxPasses -gt 0) {
-    & (Join-Path $PSScriptRoot 'run_improvement_pass.ps1')
-    $exitCode = Get-SafeLastExitCode
-    if ($exitCode -ne 0) {
-        Write-Host 'fail'
-        exit $exitCode
+    if (-not $AutoImprove) {
+        & (Join-Path $PSScriptRoot 'run_improvement_pass.ps1') -PrintPrompt
+        $exitCode = Get-SafeLastExitCode
+        if ($exitCode -ne 0) {
+            Write-Host 'fail'
+            exit $exitCode
+        }
+        Write-Host 'Prepared the next improvement pass prompt. Review it, run it, validate it, then rerun this cycle.'
+        exit 0
     }
-    Write-Host "Prepared the next improvement pass prompt. Run it, validate it, then rerun this cycle after the batch."
+
+    for ($pass = 1; $pass -le $MaxPasses; $pass++) {
+        $queue = Read-JsonFileOrNull -Path $queuePath
+        $queuedItems = @((Get-ObjectProperty -Object $queue -Name 'items' -Default @()) | Where-Object { $_.status -eq 'queued' })
+        if ($queuedItems.Count -eq 0) {
+            Write-Host "No queued improvement item remains before pass $pass."
+            break
+        }
+
+        Write-Host "Starting improvement pass $pass of ${MaxPasses}: $($queuedItems[0].title)"
+        $allowPassDirtyApply = $AllowDirtyApply -or $pass -gt 1
+        & (Join-Path $PSScriptRoot 'run_improvement_pass.ps1') -PrintPrompt -RunCodex -AllowDirtyApply:$allowPassDirtyApply
+        $exitCode = Get-SafeLastExitCode
+        if ($exitCode -ne 0) {
+            Write-Host 'fail'
+            exit $exitCode
+        }
+
+        if ($VerifyAfterFix) {
+            Write-Host "Verifying improvement pass $pass with a fresh Light audit."
+            & (Join-Path $PSScriptRoot 'run_deep_audit.ps1') -Tier Light
+            $verifyExitCode = Get-SafeLastExitCode
+            if ($verifyExitCode -ne 0) {
+                Write-Host 'fail'
+                exit $verifyExitCode
+            }
+            & (Join-Path $PSScriptRoot 'build_improvement_queue.ps1')
+            $queueExitCode = Get-SafeLastExitCode
+            if ($queueExitCode -ne 0) {
+                Write-Host 'fail'
+                exit $queueExitCode
+            }
+        }
+    }
+    Write-Host 'pass'
+    Write-Host "Completed up to $MaxPasses bounded improvement pass(es)."
 } else {
     Write-Host 'pass'
     Write-Host 'Audit and queue generation complete.'
-    Write-Host 'Interactive runs ask what to do next when queued evidence items are available. Non-interactive runs can use .\_ai_audit_workflow\RUN_AUDIT.ps1 -NextFix.'
+    Write-Host 'Use .\_ai_audit_workflow\RUN_AUDIT.ps1 -NextFix to apply one queued item intentionally.'
 }

@@ -6,6 +6,14 @@ Minimize tokens, reads, edits, commands, and output. Make the smallest safe chan
 
 ## 1. Project-Specific Guidance
 
+### Runtime Preference
+
+- Use `gpt 5.6 luna high` as the default startup profile for this project whenever model and reasoning/mode settings are user-controllable.
+- Use lighter/faster models or reasoning only for clearly trivial, low-risk work such as status checks, simple reads, or tiny mechanical edits.
+- When model choice is uncertain, bias upward to the stronger model and reasoning setting.
+- Switch back to stronger reasoning before continuing if a task becomes ambiguous, risky, multi-file, gameplay-critical, persistence-related, audit-related, visual/UI judgment-heavy, or test-failure/debugging-heavy.
+- Treat Luna High as the conservative baseline, not an exclusive model lock, unless the user explicitly asks to pin a model.
+
 ### Project Vision
 
 Hearthvale is an original, grindable single-player RPG prototype with simple controls, progression, skilling, combat, gathering, crafting, inventory management, NPC interaction, quests, shops, banking, economy, and long-term account growth.

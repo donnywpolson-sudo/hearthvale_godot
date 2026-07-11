@@ -6,17 +6,17 @@ Run one visible file:
 .\_ai_audit_workflow\RUN_AUDIT.ps1
 ```
 
-Opening it shows a menu:
+By default it runs one bounded improvement cycle: Light audit, evidence queue, one
+Codex implementation/remediation pass, and a fresh Light verification audit.
+The cycle stops after one pass so each run stays reviewable and predictable.
 
-```text
-1. Light audit
-2. Deep audit
-3. Cancel
-```
+Use `-MaxPasses 2` or `-MaxPasses 3` when you intentionally want a short batch.
+Use `-PlanOnly` for audit and queue generation without applying a change.
+Use `-Manual` to open the older Light/Deep review menu.
 
-Pick a number. You do not need to remember commands.
-
-Before it does anything expensive, the workflow checks the basics:
+Before it does anything expensive, the workflow checks the basics. Automatic mode
+also requires a clean worktree before the first Codex edit unless
+`-AllowDirtyApply` is explicitly supplied:
 
 - PowerShell is new enough
 - the workflow is inside the Hearthvale Godot project
@@ -31,11 +31,14 @@ Every run writes a full pasteable PowerShell transcript:
 - `_internal/current/latest_run.log` - most recent run for choices 1, 2, or 3
 - `_internal/current/run_logs/` - timestamped archived copies
 
-Use `Light audit` when you only want a quick audit. It runs visual capture, smoke validation, and a roughly three-minute 120-run / 200-step coverage simulation based on the latest smoke timing, with a 10-minute stop budget.
+Use `-PlanOnly` when you only want a quick Light audit. It runs visual capture, smoke validation, and a roughly three-minute 120-run / 200-step coverage simulation based on the latest smoke timing, with a 10-minute stop budget.
 
-Use `Deep audit` when you want the overnight audit. It uses the coverage preset with 4,500 runs / 1,800 steps, plus the same visual capture and validation, with a 12-hour stop budget.
+Use `-Tier Deep` when you want the overnight audit/improvement cycle. It uses the coverage preset with 4,500 runs / 1,800 steps, plus the same visual capture and validation, with a 12-hour stop budget. Add `-PlanOnly` to keep it audit-only.
 
-After Light or Deep finishes, interactive runs check the improvement queue. If queued evidence items were found, the workflow asks whether to apply the next lane-scoped item now, show the next queued evidence prompt only, or close. If the audit failed, no queued item from that run is runnable. If none were found, it says that directly.
+After an automatic pass, the fresh verification audit rebuilds the queue so the next
+run starts from current evidence. If no queued item exists, the workflow stops cleanly
+after reporting that result. If an audit or Codex pass fails, it stops and preserves the
+logs and current worktree for review.
 
 Queue lanes are intentionally separate:
 
@@ -55,6 +58,14 @@ Typed commands still work if you want them:
 
 ```powershell
 .\_ai_audit_workflow\RUN_AUDIT.ps1 -Tier Deep
+```
+
+Other useful modes:
+
+```powershell
+.\_ai_audit_workflow\RUN_AUDIT.ps1 -PlanOnly
+.\_ai_audit_workflow\RUN_AUDIT.ps1 -Tier Deep -MaxPasses 2
+.\_ai_audit_workflow\RUN_AUDIT.ps1 -Manual
 ```
 
 Visible root file:

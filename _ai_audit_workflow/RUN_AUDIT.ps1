@@ -1,6 +1,10 @@
 param(
     [ValidateSet('Light', 'Deep')]
     [string] $Tier = 'Light',
+    [ValidateRange(1, 3)]
+    [int] $MaxPasses = 1,
+    [switch] $PlanOnly,
+    [switch] $Manual,
     [switch] $NextFix,
     [switch] $SkipAudit,
     [switch] $AllowDirtyApply
@@ -74,7 +78,7 @@ function Write-RootStepSummary {
 
 function Show-Menu {
     Write-Host ''
-    Write-Host 'Hearthvale AI Audit Workflow'
+    Write-Host 'Hearthvale AI Audit Workflow (manual mode)'
     Write-Host ''
     Write-Host '1. Light audit'
     Write-Host '2. Deep audit'
@@ -83,7 +87,8 @@ function Show-Menu {
     return (Read-Host 'Choose 1-3')
 }
 
-$interactive = $PSBoundParameters.Count -eq 0
+$interactive = $Manual.IsPresent
+$autoImprove = -not $PlanOnly -and -not $Manual -and -not $NextFix -and -not $SkipAudit
 Initialize-RunLog
 
 function Get-SafeLastExitCode {
@@ -402,14 +407,15 @@ try {
     }
 
     $auditTierForPreflight = if ($SkipAudit) { '' } else { $Tier }
-    if (-not (Invoke-Preflight -NeedsGodot (-not $SkipAudit) -NeedsCodex $false -NeedsAuditQueue $false -AuditTier $auditTierForPreflight)) {
+    if (-not (Invoke-Preflight -NeedsGodot (-not $SkipAudit) -NeedsCodex $autoImprove -NeedsAuditQueue $false -NeedsCleanApply $autoImprove -AllowDirtyApply $AllowDirtyApply -AuditTier $auditTierForPreflight)) {
         Write-RootStepSummary -Step 'audit preflight' -Status 'failed' -Detail 'Audit prerequisites are missing.'
         Pause-IfInteractive -Interactive $interactive
         exit 1
     }
-    & (Join-Path $internal 'run_cycle.ps1') -Tier $Tier -SkipAudit:$SkipAudit
+    $cycleMaxPasses = if ($autoImprove) { $MaxPasses } else { 0 }
+    & (Join-Path $internal 'run_cycle.ps1') -Tier $Tier -MaxPasses $cycleMaxPasses -AutoImprove:$autoImprove -VerifyAfterFix:$autoImprove -AllowDirtyApply:$AllowDirtyApply -SkipAudit:$SkipAudit
     $exitCode = Get-SafeLastExitCode
-    if ($exitCode -eq 0 -and -not $SkipAudit) {
+    if ($exitCode -eq 0 -and -not $SkipAudit -and -not $autoImprove -and -not $PlanOnly) {
         $postAuditExitCode = Invoke-PostAuditFixMenu -Interactive $interactive
         if ($postAuditExitCode -ne 0) {
             $exitCode = $postAuditExitCode
