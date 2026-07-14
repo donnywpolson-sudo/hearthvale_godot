@@ -8,11 +8,9 @@ Minimize tokens, reads, edits, commands, and output. Make the smallest safe chan
 
 ### Runtime Preference
 
-- Use `gpt 5.6 luna high` as the default startup profile for this project whenever model and reasoning/mode settings are user-controllable.
-- Use lighter/faster models or reasoning only for clearly trivial, low-risk work such as status checks, simple reads, or tiny mechanical edits.
-- When model choice is uncertain, bias upward to the stronger model and reasoning setting.
-- Switch back to stronger reasoning before continuing if a task becomes ambiguous, risky, multi-file, gameplay-critical, persistence-related, audit-related, visual/UI judgment-heavy, or test-failure/debugging-heavy.
-- Treat Luna High as the conservative baseline, not an exclusive model lock, unless the user explicitly asks to pin a model.
+- Pin this project to `gpt-5.6-luna` with `high` reasoning for both normal and plan modes whenever model and reasoning settings are user-controllable.
+- Do not automatically switch to another model or reasoning level. Only an explicit user request may override this project pin.
+- If the pinned profile is unavailable or the active setting is explicitly shown as different, state the mismatch before substantive work.
 
 ### Project Vision
 
