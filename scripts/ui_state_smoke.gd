@@ -18,9 +18,10 @@ func _run() -> void:
 	state["inventory"]["logs"] = 3
 	state["bank"] = {"coins": 50, "copper_ore": 6}
 	state["equipment"] = {"weapon": "bronze_sword", "shield": "bronze_shield"}
-	state["quest_progress"] = {"starter_path": {"started": true, "completed": false}}
+	state["quest_state"] = {"active_quest_id": "starter_path", "quests": {"starter_path": {"started": true, "completed": false}}}
 
 	var hud = preload("res://scenes/hud.tscn").instantiate()
+	hud.set_script(preload("res://scripts/test_support/hud_smoke_harness.gd"))
 	root.add_child(hud)
 	await process_frame
 	hud.bind_state(state)

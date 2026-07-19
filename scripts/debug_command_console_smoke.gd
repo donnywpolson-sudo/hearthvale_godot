@@ -26,7 +26,7 @@ func _run() -> void:
 	await process_frame
 	hud.bind_state(state)
 	world.initialize_from_state(state)
-	gameplay.setup(state, world, hud)
+	gameplay.setup(state, world, hud, "manual")
 	world.object_activated.connect(gameplay.activate_object)
 	console.setup(state, world, hud, gameplay)
 

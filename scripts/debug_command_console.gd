@@ -96,6 +96,8 @@ func execute_command(command_line: String) -> Dictionary:
 			result = _command_result(false, "Unknown debug command '%s'. Try help." % command, clean_line)
 	_record_output(clean_line, bool(result.get("success", false)), str(result.get("message", "")))
 	_refresh_targets()
+	if bool(result.get("success", false)) and command != "help" and gameplay != null and gameplay.has_method("notify_persistent_state_changed"):
+		gameplay.notify_persistent_state_changed()
 	command_executed.emit(clean_line, bool(result.get("success", false)), str(result.get("message", "")))
 	return result
 
@@ -147,8 +149,7 @@ func _command_set_quest_state(args: Array[String], command_line: String) -> Dict
 	if not quest_state.has("flags") or not (quest_state["flags"] is Array):
 		quest_state["flags"] = []
 	quests[quest_id] = quest_state
-	state["quest_progress"] = quests.duplicate(true)
-	_world_state()["quest_state"] = root.duplicate(true)
+	state["quest_state"] = root
 	return _command_result(true, "Set %s to %s." % [quest_id, status], command_line)
 
 
@@ -218,7 +219,13 @@ func _command_spawn_drop(args: Array[String], command_line: String) -> Dictionar
 	var ground_items = _combat_state().get("ground_items", [])
 	if not (ground_items is Array):
 		ground_items = []
-	ground_items.append(drop)
+	var already_recorded := false
+	for existing in ground_items:
+		if existing is Dictionary and str(existing.get("object_id", "")) == str(drop.get("object_id", "")):
+			already_recorded = true
+			break
+	if not already_recorded:
+		ground_items.append(drop)
 	_combat_state()["ground_items"] = ground_items
 	return _command_result(true, "Spawned drop %d %s." % [quantity, item_id], command_line)
 
@@ -327,7 +334,7 @@ func _skills() -> Dictionary:
 func _combat_state() -> Dictionary:
 	var combat = state.get("combat", {})
 	if not (combat is Dictionary):
-		combat = {"current_hitpoints": 10, "mobs": {}, "ground_items": [], "status_effects": {}}
+		combat = {"current_hitpoints": 10, "mobs": {}, "ground_items": [], "ground_drop_sequence": 0, "status_effects": {}}
 		state["combat"] = combat
 	if not combat.has("mobs") or not (combat["mobs"] is Dictionary):
 		combat["mobs"] = {}
@@ -335,6 +342,8 @@ func _combat_state() -> Dictionary:
 		combat["ground_items"] = []
 	if not combat.has("status_effects") or not (combat["status_effects"] is Dictionary):
 		combat["status_effects"] = {}
+	if not combat.has("ground_drop_sequence"):
+		combat["ground_drop_sequence"] = 0
 	if not combat.has("current_hitpoints"):
 		combat["current_hitpoints"] = 10
 	return combat

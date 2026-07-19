@@ -2,6 +2,7 @@ extends SceneTree
 
 const WORLD_PATH := "res://data/world.json"
 const ITEMS_PATH := "res://data/items.json"
+const SKILLS_PATH := "res://data/skills.json"
 const RECIPES_PATH := "res://data/recipes.json"
 const QUESTS_PATH := "res://data/quests.json"
 const DEFAULT_OUTPUT_DIR := "res://.godot_logs/simulation"
@@ -14,6 +15,10 @@ const DEFAULT_TRACE := "issues"
 const DEFAULT_BALANCE_PROFILE := "default"
 const DEFAULT_TIMEOUT_SECONDS := 0.0
 const DEFAULT_SCENARIO_PROBES := "auto"
+const DEFAULT_CAMPAIGN := "baseline"
+const DEFAULT_QUEST_POLICY := "baseline"
+const CAMPAIGNS := ["baseline", "adversarial", "content", "opportunity", "replay"]
+const QUEST_POLICIES := ["baseline", "aware"]
 const INVENTORY_SLOT_LIMIT := 28
 const PERF_BUDGET_AVERAGE_ACTION_USEC := 16667.0
 const PERF_BUDGET_SLOW_ACTION_RATE := 0.25
@@ -88,6 +93,7 @@ const FAILURE_MARKERS := [
 var config := {}
 var world_data := {}
 var items_data := {}
+var skills_data := {}
 var recipes_data := {}
 var quests_data := {}
 var resources := []
@@ -107,6 +113,7 @@ var replay_metadata := {}
 var telemetry_summary := {}
 var polish_telemetry_summary := {}
 var scenario_probe_report := {}
+var coverage_ledger := {}
 var trust_context := {}
 var previous_latest_context := {}
 var latest_publish_status := "not_requested"
@@ -137,6 +144,11 @@ var timeout_deadline_msec := 0
 var timeout_abort_requested := false
 var scenario_probe_active := false
 var current_probe_issues := []
+var current_quest_policy_protected_items := {}
+var current_quest_policy_target_item := ""
+var current_quest_policy_target_quantity := 0
+var current_quest_policy_objective_flag := ""
+var current_quest_policy_quest_id := ""
 
 
 func _init() -> void:
@@ -163,6 +175,7 @@ func _run() -> void:
 
 	_load_data()
 	_discover_content()
+	_initialize_coverage_ledger()
 	trust_context = _build_trust_context()
 	previous_latest_context = _read_previous_latest_context()
 	_apply_latest_publish_status()
@@ -193,8 +206,17 @@ func _run() -> void:
 		_update_telemetry_summary(run_summary)
 		_update_polish_telemetry_summary(run_summary)
 		run_summaries.append(_compact_run_summary_for_reports(run_summary))
+		# Scene runs free HUD/world nodes immediately, but Godot may defer part of
+		# the queued render/UI cleanup until the next frame. Yield between runs so
+		# long audits do not accumulate deferred resources across scene lifecycles.
+		if run_index + 1 < int(config["runs"]):
+			await process_frame
 
+	# Probe contexts free their HUD/world/gameplay nodes immediately. Give Godot
+	# one frame to finish deferred scene/UI cleanup before report finalization.
+	_write_progress("scenario_probes", int(config["runs"]), 0, "scenario_probes")
 	scenario_probe_report = await _run_scenario_probes()
+	await process_frame
 	trust_context = _build_trust_context()
 	_apply_latest_publish_status()
 	replay_metadata["trust"] = trust_context.duplicate(true)
@@ -226,6 +248,8 @@ func _parse_args() -> Dictionary:
 		"trace": DEFAULT_TRACE,
 		"balance_profile": DEFAULT_BALANCE_PROFILE,
 		"scenario_probes": DEFAULT_SCENARIO_PROBES,
+		"campaign": DEFAULT_CAMPAIGN,
+		"quest_policy": DEFAULT_QUEST_POLICY,
 		"output_dir": DEFAULT_OUTPUT_DIR,
 		"public_output_root": DEFAULT_PUBLIC_OUTPUT_ROOT,
 		"publish_latest": false,
@@ -286,6 +310,16 @@ func _parse_args() -> Dictionary:
 				if not probe_value.is_empty():
 					index += 1
 					parsed["scenario_probes"] = probe_value
+			"--campaign":
+				var campaign_value := _arg_value(args, index, arg, errors)
+				if not campaign_value.is_empty():
+					index += 1
+					parsed["campaign"] = campaign_value
+			"--quest-policy":
+				var quest_policy_value := _arg_value(args, index, arg, errors)
+				if not quest_policy_value.is_empty():
+					index += 1
+					parsed["quest_policy"] = quest_policy_value
 			"--output-dir":
 				var output_value := _arg_value(args, index, arg, errors)
 				if not output_value.is_empty():
@@ -343,10 +377,12 @@ func _timeout_text() -> String:
 
 
 func _print_usage() -> void:
-	print("Usage: -- --runs 1000 --steps 300 --seed 1 --scenario all --trace issues --balance-profile default --scenario-probes auto --output-dir res://.godot_logs/simulation --publish-latest --public-output-root res://.godot/ai_simulation --timeout-seconds 0")
+	print("Usage: -- --runs 1000 --steps 300 --seed 1 --scenario all --trace issues --balance-profile default --scenario-probes auto --campaign baseline --quest-policy baseline --output-dir res://.godot_logs/simulation --publish-latest --public-output-root res://.godot/ai_simulation --timeout-seconds 0")
 	print("Scenarios: all, %s" % ", ".join(SCENARIOS))
 	print("Balance profiles: %s" % ", ".join(_balance_profile_ids()))
 	print("Scenario probes: auto, off, smoke, full")
+	print("Campaigns: %s" % ", ".join(CAMPAIGNS))
+	print("Quest policies: %s" % ", ".join(QUEST_POLICIES))
 	print("Trace modes: issues, all")
 	print("Add --fail-on-issues only when issue findings should fail the command.")
 	print("Add --allow-latest-downgrade only when a weaker run may replace a stronger latest report.")
@@ -397,6 +433,14 @@ func _validate_config() -> bool:
 	if scenario_probes not in ["auto", "off", "smoke", "full"]:
 		push_error("--scenario-probes must be auto, off, smoke, or full.")
 		return false
+	var campaign := str(config.get("campaign", DEFAULT_CAMPAIGN))
+	if campaign not in CAMPAIGNS:
+		push_error("--campaign must be one of: %s" % ", ".join(CAMPAIGNS))
+		return false
+	var quest_policy := str(config.get("quest_policy", DEFAULT_QUEST_POLICY))
+	if quest_policy not in QUEST_POLICIES:
+		push_error("--quest-policy must be one of: %s" % ", ".join(QUEST_POLICIES))
+		return false
 	if float(config["timeout_seconds"]) < 0.0:
 		push_error("--timeout-seconds must be non-negative. Use 0 to disable the timeout.")
 		return false
@@ -406,6 +450,7 @@ func _validate_config() -> bool:
 func _load_data() -> void:
 	world_data = _load_json(WORLD_PATH)
 	items_data = _load_json(ITEMS_PATH)
+	skills_data = _load_json(SKILLS_PATH)
 	recipes_data = _load_json(RECIPES_PATH)
 	quests_data = _load_json(QUESTS_PATH)
 
@@ -457,6 +502,291 @@ func _discover_content() -> void:
 	resources.sort_custom(func(left, right) -> bool: return str(left.get("id", "")) < str(right.get("id", "")))
 	mobs.sort_custom(func(left, right) -> bool: return str(left.get("id", "")) < str(right.get("id", "")))
 	npcs.sort_custom(func(left, right) -> bool: return str(left.get("id", "")) < str(right.get("id", "")))
+
+
+func _initialize_coverage_ledger() -> void:
+	coverage_ledger = {
+		"actions": {},
+		"skills": {},
+		"recipes": {},
+		"quests": {},
+		"resources": {},
+		"mobs": {},
+		"npcs": {},
+		"stations": {},
+	}
+	for action in ["gather_resource", "gather_woodcutting", "gather_mining", "gather_fishing", "cook", "process_furnace", "process_anvil", "process_carpentry", "process_apothecary", "attack_mob", "pickup_drop", "talk_npc", "dialogue_action", "bank_deposit", "bank_withdraw", "shop_buy", "shop_sell", "use_item", "equip_item", "drop_item", "examine_object"]:
+		coverage_ledger["actions"][action] = {"attempted": 0, "succeeded": 0}
+	for skill in _content_ids(skills_data.get("skills", skills_data), "skill_id"):
+		coverage_ledger["skills"][skill] = {"attempted": 0, "succeeded": 0}
+	for recipe in _content_ids(recipes_data, "recipe_id"):
+		coverage_ledger["recipes"][recipe] = {"attempted": 0, "succeeded": 0}
+	for quest in _content_ids(quests_data.get("quests", []), "quest_id"):
+		coverage_ledger["quests"][quest] = {"attempted": 0, "succeeded": 0}
+	for node in resources:
+		coverage_ledger["resources"][str(node.get("id", ""))] = {"attempted": 0, "succeeded": 0}
+	for mob in mobs:
+		coverage_ledger["mobs"][str(mob.get("id", ""))] = {"attempted": 0, "succeeded": 0}
+	for npc in npcs:
+		coverage_ledger["npcs"][str(npc.get("id", ""))] = {"attempted": 0, "succeeded": 0}
+	for station_key in stations.keys():
+		coverage_ledger["stations"][str(station_key)] = {"attempted": 0, "succeeded": 0}
+
+
+func _content_ids(raw, id_key: String) -> Array:
+	var ids := []
+	if raw is Array:
+		for entry in raw:
+			if entry is Dictionary:
+				var value := str(entry.get(id_key, ""))
+				if not value.is_empty(): ids.append(value)
+	elif raw is Dictionary:
+		for key in raw.keys():
+			var entry = raw[key]
+			if entry is Dictionary:
+				var value := str(entry.get(id_key, key))
+				if not value.is_empty(): ids.append(value)
+			elif entry is Array:
+				ids.append_array(_content_ids(entry, id_key))
+	ids.sort()
+	return ids
+
+
+func _coverage_missing_count(category: String) -> int:
+	var row = _coverage_report().get(category, {})
+	if row is Dictionary:
+		return _as_array(row.get("missing", [])).size()
+	return 0
+
+
+func _coverage_mark(category: String, content_id: String, succeeded: bool) -> void:
+	if content_id.is_empty() or not coverage_ledger.has(category):
+		return
+	var entries = coverage_ledger[category]
+	if not (entries is Dictionary) or not entries.has(content_id):
+		return
+	var row = entries[content_id]
+	if not (row is Dictionary): row = {"attempted": 0, "succeeded": 0}
+	row["attempted"] = int(row.get("attempted", 0)) + 1
+	if succeeded: row["succeeded"] = int(row.get("succeeded", 0)) + 1
+	entries[content_id] = row
+
+
+func _record_coverage(record: Dictionary) -> void:
+	var action := str(record.get("action", ""))
+	var succeeded := not bool(record.get("skipped", false)) and not _is_failure_feedback(str(record.get("feedback", "")))
+	_coverage_mark("actions", action, succeeded)
+	var target_id := str(record.get("target_id", ""))
+	if action.begins_with("gather"):
+		_coverage_mark("resources", target_id, succeeded)
+		var skill_id: String = str({"gather_woodcutting": "woodcutting", "gather_mining": "mining", "gather_fishing": "fishing"}.get(action, ""))
+		if action == "gather_resource":
+			for resource in resources:
+				if resource is Dictionary and str(resource.get("id", "")) == target_id:
+					skill_id = str(resource.get("skill_id", ""))
+					break
+		_coverage_mark("skills", str(skill_id), succeeded)
+	elif action.begins_with("process") or action == "cook":
+		var station_id: String = str({"process_furnace": "furnace", "process_anvil": "anvil", "process_carpentry": "carpentry_bench", "process_apothecary": "apothecary_table", "cook": "cooking_range"}.get(action, ""))
+		_coverage_mark("stations", str(station_id), succeeded)
+		_coverage_mark("skills", _processing_skill_for_action(action, target_id), succeeded)
+		_record_recipe_coverage(record, succeeded)
+	elif action == "attack_mob":
+		_coverage_mark("mobs", target_id, succeeded)
+		var combat_style := "attack"
+		if current_state is Dictionary:
+			combat_style = str(current_state.get("combat_training_style", "attack"))
+		if combat_style not in ["attack", "strength", "defence", "ranged", "magic"]:
+			combat_style = "attack"
+		_coverage_mark("skills", combat_style, succeeded)
+		_coverage_mark("skills", "hitpoints", succeeded)
+		var skill_deltas = record.get("skill_xp_deltas", {})
+		if skill_deltas is Dictionary and int(skill_deltas.get("defence", 0)) > 0:
+			_coverage_mark("skills", "defence", succeeded)
+	elif action in ["talk_npc", "dialogue_action"]:
+		_coverage_mark("npcs", target_id, succeeded)
+	elif action in ["open_bank", "open_shop"]:
+		_coverage_mark("stations", str({"open_bank": "bank", "open_shop": "shop"}.get(action, "")), succeeded)
+	var quest_root: Dictionary = {}
+	if current_state is Dictionary:
+		var raw_quest_root: Variant = current_state.get("quest_state", {})
+		if raw_quest_root is Dictionary:
+			quest_root = raw_quest_root
+	var quest_rows: Dictionary = {}
+	var raw_quest_rows: Variant = quest_root.get("quests", {})
+	if raw_quest_rows is Dictionary:
+		quest_rows = raw_quest_rows
+	if quest_rows is Dictionary:
+		for quest_id in quest_rows.keys():
+			var quest_state = quest_rows[quest_id]
+			if quest_state is Dictionary and (bool(quest_state.get("started", false)) or bool(quest_state.get("completed", false)) or not _as_array(quest_state.get("flags", [])).is_empty()):
+				_coverage_mark("quests", str(quest_id), succeeded)
+
+
+func _processing_skill_for_action(action: String, target_id: String) -> String:
+	var action_type: String = str({
+		"process_furnace": "smelting",
+		"process_anvil": "smithing",
+		"process_carpentry": "carpentry",
+		"process_apothecary": "herbalism",
+	}.get(action, ""))
+	if action == "process_station":
+		action_type = str({
+			"furnace": "smelting",
+			"anvil": "smithing",
+			"carpentry_bench": "carpentry",
+			"apothecary_table": "herbalism",
+		}.get(target_id, ""))
+	if action == "cook":
+		return "cooking"
+	return str(PROCESSING_SKILLS.get(str(action_type), ""))
+
+
+func _record_recipe_coverage(record: Dictionary, succeeded: bool) -> void:
+	var feedback := str(record.get("feedback", ""))
+	if feedback.is_empty():
+		return
+	var action_type: String = str({
+		"process_furnace": "smelting",
+		"process_anvil": "smithing",
+		"process_carpentry": "carpentry",
+		"process_apothecary": "herbalism",
+	}.get(str(record.get("action", "")), ""))
+	var action_types: Array[String] = []
+	if str(record.get("action", "")) == "process_station":
+		for recipe_type in recipes_data.keys():
+			action_types.append(str(recipe_type))
+	else:
+		action_types.append(str(action_type))
+	if action_types.is_empty():
+		return
+	for recipe_type in action_types:
+		var recipes = recipes_data.get(recipe_type, [])
+		if not recipes is Array:
+			continue
+		for recipe in recipes:
+			if not recipe is Dictionary:
+				continue
+			var recipe_id := str(recipe.get("recipe_id", ""))
+			var display_name := str(recipe.get("display_name", recipe_id))
+			if (not display_name.is_empty() and feedback.find(display_name) >= 0) or (not recipe_id.is_empty() and feedback.find(recipe_id) >= 0):
+				_coverage_mark("recipes", recipe_id, succeeded)
+				return
+
+
+func _skill_xp_snapshot() -> Dictionary:
+	var snapshot := {}
+	if not current_state is Dictionary:
+		return snapshot
+	var skills = current_state.get("skills", {})
+	if not skills is Dictionary:
+		return snapshot
+	for skill_id in skills.keys():
+		var values = skills[skill_id]
+		if values is Dictionary:
+			snapshot[str(skill_id)] = int(values.get("xp", 0))
+	return snapshot
+
+
+func _skill_xp_deltas(before: Dictionary, after: Dictionary) -> Dictionary:
+	var deltas := {}
+	for skill_id in after.keys():
+		var delta := int(after[skill_id]) - int(before.get(skill_id, 0))
+		if delta != 0:
+			deltas[str(skill_id)] = delta
+	return deltas
+
+
+func _coverage_report() -> Dictionary:
+	var report := {}
+	for category in coverage_ledger.keys():
+		var entries = coverage_ledger[category]
+		var missing := []
+		var failed := []
+		var attempted := 0
+		var succeeded := 0
+		if entries is Dictionary:
+			for content_id in _sorted_keys(entries):
+				var row = entries[content_id]
+				var row_attempted := int(row.get("attempted", 0)) if row is Dictionary else 0
+				var row_succeeded := int(row.get("succeeded", 0)) if row is Dictionary else 0
+				attempted += row_attempted
+				succeeded += row_succeeded
+				if row_attempted == 0: missing.append(str(content_id))
+				elif row_succeeded == 0: failed.append(str(content_id))
+		report[category] = {
+			"expected": entries.size() if entries is Dictionary else 0,
+			"attempted": attempted,
+			"succeeded": succeeded,
+			"attempted_ids": (entries.size() - missing.size()) if entries is Dictionary else 0,
+			"succeeded_ids": (entries.size() - missing.size() - failed.size()) if entries is Dictionary else 0,
+			"failed_count": failed.size(),
+			"untested_count": missing.size(),
+			"coverage_rate": float(entries.size() - missing.size()) / float(max(1, entries.size())) if entries is Dictionary else 0.0,
+			"missing": missing,
+			"failed": failed,
+		}
+	return report
+
+
+func _opportunity_report() -> Array:
+	var opportunities := []
+	var coverage := _coverage_report()
+	for category in ["skills", "recipes", "quests", "mobs"]:
+		var row = coverage.get(category, {})
+		var missing = _as_array(row.get("missing", [])) if row is Dictionary else []
+		if not missing.is_empty():
+			opportunities.append({
+				"id": "opportunity-%s-coverage" % category,
+				"fingerprint": _combined_hash(["coverage", category, ",".join(missing)]),
+				"category": "content_depth",
+				"confidence": "medium",
+				"hypothesis": "%s content is not exercised by the current campaign and may hide shallow, unreachable, or unbalanced progression." % category.capitalize(),
+				"evidence": {"coverage": row, "campaign": str(config.get("campaign", DEFAULT_CAMPAIGN))},
+				"smallest_experiment": "Run the content campaign with full scenario probes and inspect the missing IDs before changing data.",
+				"acceptance": "Every intended %s ID is attempted and either succeeds or has a documented unsupported reason." % category,
+				"verification_gap": "Coverage absence does not prove the content is broken or undesirable.",
+			})
+	var telemetry := _telemetry_report(10)
+	var action_counts = telemetry.get("action_counts", {}) if telemetry is Dictionary else {}
+	if action_counts is Dictionary and not action_counts.is_empty():
+		var total_actions := 0
+		var dominant_action := ""
+		var dominant_count := 0
+		for action in action_counts.keys():
+			var count := int(action_counts[action])
+			total_actions += count
+			if count > dominant_count:
+				dominant_count = count
+				dominant_action = str(action)
+		if total_actions > 0 and float(dominant_count) / float(total_actions) >= 0.45:
+			opportunities.append({
+				"id": "opportunity-dominant-action",
+				"fingerprint": _combined_hash(["dominant_action", dominant_action, str(dominant_count), str(total_actions)]),
+				"category": "choice_depth",
+				"confidence": "medium",
+				"hypothesis": "The current campaign may converge on %s, reducing meaningful player choice in the existing loop." % dominant_action,
+				"evidence": {"dominant_action": dominant_action, "count": dominant_count, "total_actions": total_actions, "action_counts": action_counts},
+				"smallest_experiment": "Compare the same campaign under progression, economy, combat, and opportunity profiles before adding new content.",
+				"acceptance": "At least two viable action routes produce measurable progression without introducing regressions.",
+				"verification_gap": "Bot policy can create artificial dominance; manual review is required before design changes.",
+			})
+	var balance := _balance_profile_report(10)
+	var started := int(balance.get("started_quests", 0)) if balance is Dictionary else 0
+	var completed := int(balance.get("completed_quests", 0)) if balance is Dictionary else 0
+	if started >= 3 and completed * 2 < started:
+		opportunities.append({
+			"id": "opportunity-quest-return-depth",
+			"fingerprint": _combined_hash(["quest_return_depth", str(started), str(completed)]),
+			"category": "quest_depth",
+			"confidence": "medium",
+			"hypothesis": "Quest routes may start reliably but fail to create enough completion momentum or meaningful return choices.",
+			"evidence": {"started_quests": started, "completed_quests": completed, "completion_rate": float(completed) / float(started)},
+			"smallest_experiment": "Run a focused quest campaign with full probes and inspect the first incomplete objective for friction.",
+			"acceptance": "Quest completion and objective-branch metrics improve without weakening reward-capacity or save contracts.",
+			"verification_gap": "Short simulations may under-sample long quest routes.",
+		})
+	return opportunities
 
 
 func _prepare_output_dir() -> bool:
@@ -974,10 +1304,16 @@ func _run_single_simulation(run_index: int) -> Dictionary:
 	current_run_telemetry = _new_telemetry_bucket()
 	current_run_polish_telemetry = _new_polish_bucket()
 	current_polish_feedback_counts = {}
+	current_quest_policy_protected_items = {}
+	current_quest_policy_target_item = ""
+	current_quest_policy_target_quantity = 0
+	current_quest_policy_objective_flag = ""
+	current_quest_policy_quest_id = ""
 	current_run_telemetry["runs"] = 1
 	current_run_telemetry["seed"] = current_seed
 	current_run_telemetry["run_index"] = current_run_index
 	current_run_telemetry["scenario"] = current_scenario
+	current_run_telemetry["quest_policy"] = str(config.get("quest_policy", DEFAULT_QUEST_POLICY))
 	current_run_polish_telemetry["runs"] = 1
 	current_run_polish_telemetry["seed"] = current_seed
 	current_run_polish_telemetry["run_index"] = current_run_index
@@ -1002,7 +1338,7 @@ func _run_single_simulation(run_index: int) -> Dictionary:
 	await process_frame
 	current_hud.bind_state(current_state)
 	current_world.initialize_from_state(current_state)
-	current_gameplay.setup(current_state, current_world, current_hud)
+	current_gameplay.setup(current_state, current_world, current_hud, "manual")
 
 	var first_digest := _state_digest()
 	var initial_summary := StateSnapshot.summarize_state(current_state)
@@ -1012,24 +1348,35 @@ func _run_single_simulation(run_index: int) -> Dictionary:
 			_cleanup_current_simulation_run(store)
 			return {}
 		current_step = step
-		var action_name := _resolve_action_preconditions(_choose_action(current_scenario, step), step)
+		var requested_action := _campaign_action(_choose_action(current_scenario, step), step)
+		if _quest_policy_active():
+			requested_action = _choose_quest_aware_action(step, requested_action)
+		var action_name := requested_action if requested_action.begins_with("adversarial_") else _resolve_action_preconditions(requested_action, step)
 		var before_digest := _state_digest()
+		var before_gameplay_digest := _gameplay_state_digest()
 		var before_feedback := _feedback_text()
 		var before_hitpoints := _current_hitpoints()
 		var before_coins := int(_inventory().get("coins", 0))
 		var before_quest_counts := _quest_counts()
 		var before_tile := _player_tile()
+		var before_skill_xp := _skill_xp_snapshot()
+		var before_quest_target_quantity := int(_inventory().get(current_quest_policy_target_item, 0)) if not current_quest_policy_target_item.is_empty() else 0
 		var started_usec := Time.get_ticks_usec()
 		var action_record := _execute_action(action_name)
+		if str(config.get("campaign", DEFAULT_CAMPAIGN)) == "adversarial" and step % 31 == 0:
+			_perform_state_checkpoint(store, username, action_record)
 		var after_feedback := _feedback_text()
 		var after_digest := _state_digest()
+		var after_gameplay_digest := _gameplay_state_digest()
 		var after_hitpoints := _current_hitpoints()
 		var after_coins := int(_inventory().get("coins", 0))
 		var after_quest_counts := _quest_counts()
 		var after_tile := _player_tile()
+		var after_skill_xp := _skill_xp_snapshot()
 		action_record["feedback"] = after_feedback
 		action_record["previous_feedback"] = before_feedback
 		action_record["changed_state"] = before_digest != after_digest
+		action_record["gameplay_state_changed"] = before_gameplay_digest != after_gameplay_digest
 		action_record["inventory_slots"] = _inventory_slot_count(_inventory())
 		action_record["hitpoints"] = after_hitpoints
 		action_record["hitpoints_before"] = before_hitpoints
@@ -1038,10 +1385,18 @@ func _run_single_simulation(run_index: int) -> Dictionary:
 		action_record["coin_delta"] = after_coins - before_coins
 		action_record["started_quest_delta"] = int(after_quest_counts.get("started", 0)) - int(before_quest_counts.get("started", 0))
 		action_record["completed_quest_delta"] = int(after_quest_counts.get("completed", 0)) - int(before_quest_counts.get("completed", 0))
+		action_record["skill_xp_deltas"] = _skill_xp_deltas(before_skill_xp, after_skill_xp)
 		action_record["from_tile"] = [before_tile.x, before_tile.y]
 		action_record["tile"] = [after_tile.x, after_tile.y]
 		action_record["tile_key"] = _tile_key(after_tile)
 		action_record["elapsed_usec"] = Time.get_ticks_usec() - started_usec
+		action_record["requested_action"] = requested_action
+		action_record["quest_policy"] = str(config.get("quest_policy", DEFAULT_QUEST_POLICY))
+		action_record["quest_policy_quest_id"] = current_quest_policy_quest_id
+		action_record["quest_objective_flag"] = current_quest_policy_objective_flag
+		action_record["quest_policy_target_item"] = current_quest_policy_target_item
+		_record_quest_policy_action_result(action_name, before_quest_target_quantity, action_record)
+		_record_coverage(action_record)
 		_record_action_telemetry(action_record)
 		_record_polish_telemetry(action_record)
 		_record_action_trace(action_record)
@@ -1070,6 +1425,7 @@ func _run_single_simulation(run_index: int) -> Dictionary:
 		"run_index": current_run_index,
 		"scenario": current_scenario,
 		"steps": int(config["steps"]),
+		"quest_policy": str(config.get("quest_policy", DEFAULT_QUEST_POLICY)),
 		"replay": _run_replay_metadata(current_seed, current_scenario),
 		"result": result,
 		"issue_count": current_issue_occurrences,
@@ -1132,6 +1488,11 @@ func _cleanup_current_simulation_run(store: Object) -> void:
 	current_run_telemetry = {}
 	current_run_polish_telemetry = {}
 	current_polish_feedback_counts = {}
+	current_quest_policy_protected_items = {}
+	current_quest_policy_target_item = ""
+	current_quest_policy_target_quantity = 0
+	current_quest_policy_objective_flag = ""
+	current_quest_policy_quest_id = ""
 
 
 func _run_scenario_probes() -> Dictionary:
@@ -1149,6 +1510,9 @@ func _run_scenario_probes() -> Dictionary:
 		"core_loop_probes": [],
 		"skill_probes": [],
 		"recipe_probes": [],
+		"resource_probes": [],
+		"npc_probes": [],
+		"station_probes": [],
 		"quest_probes": [],
 		"combat_probes": [],
 		"economy_probes": [],
@@ -1296,6 +1660,27 @@ func _scenario_probe_definitions(mode: String) -> Array:
 
 func _full_scenario_probe_definitions() -> Array:
 	var probes := []
+	for resource in resources:
+		if not (resource is Dictionary):
+			continue
+		var resource_id := str(resource.get("id", ""))
+		var skill_id := str(resource.get("skill_id", ""))
+		if resource_id.is_empty() or skill_id.is_empty():
+			continue
+		var initial_inventory := {"bronze_axe": 1, "bronze_pickaxe": 1, "fishing_rod": 1}
+		var required_tool := _required_tool_id(skill_id)
+		if not required_tool.is_empty():
+			initial_inventory[required_tool] = 1
+		probes.append({
+			"id": "resource_%s" % resource_id,
+			"bucket": "resource_probes",
+			"label": "Resource probe: %s" % str(resource.get("label", resource_id)),
+			"target_resource_id": resource_id,
+			"initial_skill_levels": {skill_id: int(resource.get("required_level", 1))},
+			"initial_inventory": initial_inventory,
+			"actions": ["gather_resource"],
+			"expect": {"state_delta": true, "xp_gain": true},
+		})
 	for skill_id in ["woodcutting", "mining", "fishing"]:
 		var action := "gather_%s" % skill_id
 		probes.append({
@@ -1307,9 +1692,30 @@ func _full_scenario_probe_definitions() -> Array:
 			"expect": {"state_delta": true, "xp_gain": true},
 		})
 	for action_type in ["smelting", "smithing", "carpentry", "herbalism"]:
-		var recipe_probe := _recipe_probe_definition(action_type)
-		if not recipe_probe.is_empty():
-			probes.append(recipe_probe)
+		var recipes = recipes_data.get(action_type, [])
+		if not (recipes is Array):
+			continue
+		for recipe in recipes:
+			if recipe is Dictionary:
+				var recipe_probe := _recipe_probe_definition(action_type, recipe)
+				if not recipe_probe.is_empty():
+					probes.append(recipe_probe)
+	for combat_style in ["strength", "ranged", "magic"]:
+		var weapon_id := str({
+			"strength": "bronze_sword",
+			"ranged": "training_bow",
+			"magic": "training_staff",
+		}.get(combat_style, "bronze_sword"))
+		probes.append({
+			"id": "combat_%s_style" % combat_style,
+			"bucket": "combat_probes",
+			"label": "%s combat training style probe" % _display_label(combat_style),
+			"combat_training_style": combat_style,
+			"target_mob_id": "rat_01",
+			"initial_inventory": {weapon_id: 1, "cooked_shrimp": 3},
+			"actions": ["equip_item", "attack_mob", "attack_mob", "attack_mob", "pickup_drop"],
+			"expect": {"state_delta": true, "xp_gain": true, "mob_defeat": true},
+		})
 	for quest in _as_array(quests_data.get("quests", [])):
 		if not (quest is Dictionary):
 			continue
@@ -1341,15 +1747,60 @@ func _full_scenario_probe_definitions() -> Array:
 			"actions": ["equip_item", "attack_mob", "attack_mob", "attack_mob", "pickup_drop"],
 			"expect": {"state_delta": true, "xp_gain": true},
 		})
+	for npc in npcs:
+		if not (npc is Dictionary):
+			continue
+		var npc_id := str(npc.get("id", ""))
+		if npc_id.is_empty():
+			continue
+		probes.append({
+			"id": "npc_%s" % npc_id,
+			"bucket": "npc_probes",
+			"label": "NPC interaction probe: %s" % str(npc.get("label", npc_id)),
+			"target_npc_id": npc_id,
+			"initial_inventory": {"coins": 50, "bronze_axe": 1, "bronze_pickaxe": 1, "fishing_rod": 1},
+			"actions": ["dialogue_action"],
+		})
+	for station_key in stations.keys():
+		var station_id := str(station_key)
+		var station_action := "open_bank" if station_id == "bank" else "open_shop" if station_id == "shop" else str({
+			"cooking_range": "cook",
+			"furnace": "process_furnace",
+			"anvil": "process_anvil",
+			"carpentry_bench": "process_carpentry",
+			"apothecary_table": "process_apothecary",
+		}.get(station_id, "process_station"))
+		probes.append({
+			"id": "station_%s" % station_id,
+			"bucket": "station_probes",
+			"label": "Station interaction probe: %s" % _display_label(station_id),
+			"station_probe_id": station_id,
+			"initial_inventory": {"coins": 50, "logs": 2, "plain_plank": 2, "plain_tool_handle": 1},
+			"actions": [station_action],
+		})
+	if not npcs.is_empty():
+		var talk_npc_id := str(npcs[0].get("id", ""))
+		probes.append({
+			"id": "action_talk_npc",
+			"bucket": "npc_probes",
+			"label": "Talk-to-NPC action probe",
+			"target_npc_id": talk_npc_id,
+			"actions": ["talk_npc"],
+		})
+	if not resources.is_empty():
+		var examine_object_id := str(resources[0].get("id", ""))
+		probes.append({
+			"id": "action_examine_object",
+			"bucket": "resource_probes",
+			"label": "Examine-object action probe",
+			"target_examine_object_id": examine_object_id,
+			"actions": ["examine_object"],
+		})
 	return probes
 
 
-func _recipe_probe_definition(action_type: String) -> Dictionary:
-	var recipes = recipes_data.get(action_type, [])
-	if not (recipes is Array) or recipes.is_empty():
-		return {}
-	var recipe = recipes[0]
-	if not (recipe is Dictionary):
+func _recipe_probe_definition(action_type: String, recipe: Dictionary) -> Dictionary:
+	if recipe.is_empty():
 		return {}
 	var inventory := {"bronze_axe": 1, "bronze_pickaxe": 1, "fishing_rod": 1}
 	var inputs = recipe.get("inputs", {})
@@ -1364,8 +1815,11 @@ func _recipe_probe_definition(action_type: String) -> Dictionary:
 	}.get(action_type, "process_station"))
 	return {
 		"id": "recipe_%s_%s" % [action_type, str(recipe.get("recipe_id", "first"))],
+		"recipe_id": str(recipe.get("recipe_id", "")),
+		"recipe_action_type": action_type,
 		"bucket": "recipe_probes",
 		"label": "%s recipe probe: %s" % [_display_label(action_type), str(recipe.get("display_name", recipe.get("recipe_id", "")))],
+		"initial_skill_levels": {str(PROCESSING_SKILLS.get(action_type, action_type)): int(recipe.get("required_level", 1))},
 		"initial_inventory": inventory,
 		"actions": [action],
 		"expect": {"state_delta": true, "xp_gain": true},
@@ -1376,7 +1830,7 @@ func _scenario_probe_known_gaps() -> Array:
 	return [
 		"Scenario probes exercise direct gameplay APIs, not real mouse/keyboard input timing.",
 		"Scenario probes do not inspect rendered screenshots, audio timing, animation quality, or player comprehension.",
-		"Herbalism and foraging probes are limited by the current generic gather action surface unless explicit bot actions are added.",
+		"Full probes now cover every configured resource node, NPC, station, and interaction action through direct APIs; mouse/keyboard timing and rendered UI remain outside this probe lane.",
 		"Golden smokes and save/load torture remain the pass/fail authorities; scenario probes are report-only diagnostics.",
 	]
 
@@ -1395,7 +1849,7 @@ func _run_scenario_probe(probe: Dictionary, probe_index: int) -> Dictionary:
 	for raw_action in _as_array(probe.get("actions", [])):
 		current_step = action_index
 		var requested := str(raw_action)
-		var resolved := _resolve_action_preconditions(requested, action_index)
+		var resolved := requested if probe.has("recipe_id") or probe.has("station_probe_id") or probe.has("target_resource_id") or probe.has("target_npc_id") or probe.has("target_examine_object_id") else _resolve_action_preconditions(requested, action_index)
 		var action_result := _execute_probe_action(requested, resolved, action_index)
 		actions.append(action_result)
 		action_index += 1
@@ -1414,9 +1868,37 @@ func _run_scenario_probe(probe: Dictionary, probe_index: int) -> Dictionary:
 		"issues": current_probe_issues.duplicate(true),
 	}
 	_apply_probe_expectations(result, probe)
+	_record_probe_coverage(probe, result)
 	_cleanup_current_simulation_run(store)
 	current_probe_issues = []
+	# Each probe owns a fresh scene context. Yield after freeing it so deferred
+	# node/resource cleanup does not accumulate across the full probe suite.
+	await process_frame
 	return result
+
+
+func _record_probe_coverage(probe: Dictionary, result: Dictionary) -> void:
+	var probe_id := str(probe.get("id", ""))
+	var succeeded := _as_array(result.get("issues", [])).is_empty()
+	if probe_id.begins_with("skill_"):
+		_coverage_mark("skills", probe_id.trim_prefix("skill_"), succeeded)
+	elif probe_id.begins_with("recipe_"):
+		var recipe_id := str(probe.get("recipe_id", ""))
+		if recipe_id.is_empty():
+			var parts := probe_id.split("_")
+			if parts.size() >= 3:
+				recipe_id = "_".join(parts.slice(2))
+		_coverage_mark("recipes", recipe_id, succeeded)
+	elif probe_id.begins_with("quest_"):
+		_coverage_mark("quests", probe_id.trim_prefix("quest_"), succeeded)
+	elif probe_id.begins_with("mob_"):
+		_coverage_mark("mobs", probe_id.trim_prefix("mob_"), succeeded)
+	elif probe_id.begins_with("resource_"):
+		_coverage_mark("resources", probe_id.trim_prefix("resource_"), succeeded)
+	elif probe_id.begins_with("npc_"):
+		_coverage_mark("npcs", probe_id.trim_prefix("npc_"), succeeded)
+	elif probe_id.begins_with("station_"):
+		_coverage_mark("stations", probe_id.trim_prefix("station_"), succeeded)
 
 
 func _setup_scenario_probe_context(probe: Dictionary, probe_index: int):
@@ -1451,18 +1933,42 @@ func _setup_scenario_probe_context(probe: Dictionary, probe_index: int):
 	await process_frame
 	current_hud.bind_state(current_state)
 	current_world.initialize_from_state(current_state)
-	current_gameplay.setup(current_state, current_world, current_hud)
+	current_gameplay.setup(current_state, current_world, current_hud, "manual")
+	if probe.has("recipe_id") and current_gameplay.has_method("set_simulation_recipe_override"):
+		current_gameplay.call("set_simulation_recipe_override", str(probe.get("recipe_action_type", "")), str(probe.get("recipe_id", "")))
 	return store
 
 
 func _apply_probe_initial_state(probe: Dictionary) -> void:
 	current_state["inventory"] = _normalize_probe_mapping(probe.get("initial_inventory", current_state.get("inventory", {})))
 	current_state["bank"] = _normalize_probe_mapping(probe.get("initial_bank", current_state.get("bank", {})))
+	if probe.has("combat_training_style"):
+		current_state["combat_training_style"] = str(probe.get("combat_training_style", "attack"))
+	var initial_skill_levels: Variant = probe.get("initial_skill_levels", {})
+	if initial_skill_levels is Dictionary:
+		var skills: Dictionary = current_state.get("skills", {})
+		if not (skills is Dictionary):
+			skills = {}
+		for skill_id in initial_skill_levels.keys():
+			var skill_key := str(skill_id)
+			var level: int = maxi(1, int(initial_skill_levels[skill_id]))
+			var values: Variant = skills.get(skill_key, {})
+			if not (values is Dictionary):
+				values = {}
+			values["level"] = level
+			values["xp"] = _skill_xp_threshold(skill_key, level)
+			skills[skill_key] = values
+		current_state["skills"] = skills
 	if probe.has("active_quest_id"):
 		current_state["quest_state"] = {"active_quest_id": str(probe["active_quest_id"]), "quests": {}}
-		current_state["quest_progress"] = {}
 	if probe.has("target_mob_id"):
 		current_state["probe_target_mob_id"] = str(probe["target_mob_id"])
+	if probe.has("target_resource_id"):
+		current_state["probe_target_resource_id"] = str(probe["target_resource_id"])
+	if probe.has("target_npc_id"):
+		current_state["probe_target_npc_id"] = str(probe["target_npc_id"])
+	if probe.has("target_examine_object_id"):
+		current_state["probe_target_examine_object_id"] = str(probe["target_examine_object_id"])
 	if probe.has("initial_combat") and probe["initial_combat"] is Dictionary:
 		current_state["combat"] = probe["initial_combat"].duplicate(true)
 	var combat = current_state.get("combat", {})
@@ -1477,6 +1983,25 @@ func _normalize_probe_mapping(value) -> Dictionary:
 		for key in value.keys():
 			result[str(key)] = int(value[key])
 	return result
+
+
+func _skill_xp_threshold(skill_id: String, level: int) -> int:
+	var definition = skills_data.get(skill_id, {})
+	if definition is Dictionary:
+		var thresholds = definition.get("xp_thresholds", {})
+		if thresholds is Dictionary:
+			var exact_key := str(max(1, level))
+			if thresholds.has(exact_key):
+				return int(thresholds[exact_key])
+			var best_level := 1
+			var best_xp := 0
+			for threshold_key in thresholds.keys():
+				var threshold_level := int(threshold_key)
+				if threshold_level <= level and threshold_level >= best_level:
+					best_level = threshold_level
+					best_xp = int(thresholds[threshold_key])
+			return best_xp
+	return 0
 
 
 func _scenario_probe_setup_failed(probe: Dictionary, probe_index: int) -> Dictionary:
@@ -1500,11 +2025,13 @@ func _execute_probe_action(requested: String, resolved: String, action_index: in
 	var before_digest := _state_digest()
 	var before_feedback := _feedback_text()
 	var before_snapshot := _probe_state_snapshot()
+	var before_skill_xp := _skill_xp_snapshot()
 	var started_usec := Time.get_ticks_usec()
 	var record := _execute_action(resolved)
 	var after_feedback := _feedback_text()
 	var after_digest := _state_digest()
 	var after_snapshot := _probe_state_snapshot()
+	var after_skill_xp := _skill_xp_snapshot()
 	record["feedback"] = after_feedback
 	record["previous_feedback"] = before_feedback
 	record["changed_state"] = before_digest != after_digest
@@ -1514,7 +2041,9 @@ func _execute_probe_action(requested: String, resolved: String, action_index: in
 	record["damage_taken"] = max(0, int(before_snapshot.get("hitpoints", 0)) - _current_hitpoints())
 	record["healing_done"] = max(0, _current_hitpoints() - int(before_snapshot.get("hitpoints", 0)))
 	record["coin_delta"] = int(after_snapshot.get("coins", 0)) - int(before_snapshot.get("coins", 0))
+	record["skill_xp_deltas"] = _skill_xp_deltas(before_skill_xp, after_skill_xp)
 	record["elapsed_usec"] = Time.get_ticks_usec() - started_usec
+	_record_coverage(record)
 	_check_invariants(record)
 	_advance_clock_between_actions(record)
 	return {
@@ -1683,6 +2212,48 @@ func _scenario_for_run(run_index: int) -> String:
 	return str(profile_mix[run_index % profile_mix.size()])
 
 
+func _campaign_action(base_action: String, step: int) -> String:
+	var campaign := str(config.get("campaign", DEFAULT_CAMPAIGN))
+	if campaign == "adversarial":
+		match step % 47:
+			0: return "adversarial_invalid_bank"
+			11: return "adversarial_invalid_shop"
+			23: return "adversarial_invalid_inventory"
+			37: return "adversarial_rapid_repeat"
+	if campaign == "content":
+		var content_actions := ["gather_woodcutting", "gather_mining", "gather_fishing", "process_furnace", "process_anvil", "process_carpentry", "process_apothecary", "cook", "attack_mob", "dialogue_action", "bank_deposit", "bank_withdraw", "shop_buy", "shop_sell", "use_item", "equip_item", "drop_item"]
+		var content_action := str(content_actions[step % content_actions.size()])
+		if content_action == "dialogue_action" and _dialogue_action_blocked_for_sim():
+			# The game intentionally blocks quest completion when the inventory is
+			# full. Keep the content campaign from manufacturing that expected block;
+			# the audit should measure player-facing defects, not bot inventory policy.
+			return _full_inventory_recovery_action(step)
+		return content_action
+	return base_action
+
+
+func _perform_state_checkpoint(store: Object, username: String, record: Dictionary) -> void:
+	if store == null or not store.has_method("save_state") or not store.has_method("load_state"):
+		return
+	if not bool(store.call("save_state", username, current_state)):
+		record["checkpoint"] = "save_failed"
+		_record_issue("bug", "P1", str(record.get("action", "checkpoint")), "Adversarial save checkpoint failed.", _feedback_text(), {})
+		return
+	var loaded = store.call("load_state", username)
+	if not (loaded is Dictionary) or loaded.is_empty():
+		record["checkpoint"] = "load_failed"
+		_record_issue("bug", "P1", str(record.get("action", "checkpoint")), "Adversarial save checkpoint could not reload state.", _feedback_text(), {})
+		return
+	current_state = loaded.duplicate(true)
+	record["checkpoint"] = "round_trip"
+	if current_hud != null and current_hud.has_method("bind_state"):
+		current_hud.bind_state(current_state)
+	if current_world != null and current_world.has_method("initialize_from_state"):
+		current_world.initialize_from_state(current_state)
+	if current_gameplay != null and current_gameplay.has_method("setup"):
+		current_gameplay.setup(current_state, current_world, current_hud, "manual")
+
+
 func _choose_action(scenario: String, step: int) -> String:
 	match scenario:
 		"core_loop":
@@ -1777,6 +2348,167 @@ func _choose_quest_action(step: int) -> String:
 		return "attack_mob"
 	var flag := str(missing[0])
 	return _quest_action_for_flag(flag)
+
+
+func _quest_policy_active() -> bool:
+	return str(config.get("quest_policy", DEFAULT_QUEST_POLICY)) == "aware" and current_scenario == "quest_chaser"
+
+
+func _choose_quest_aware_action(_step: int, fallback_action: String) -> String:
+	current_quest_policy_protected_items = {}
+	current_quest_policy_target_item = ""
+	current_quest_policy_target_quantity = 0
+	current_quest_policy_objective_flag = ""
+	current_quest_policy_quest_id = ""
+	var target := _active_quest_target()
+	if target.is_empty():
+		return fallback_action
+	var missing := _missing_flags(target)
+	if missing.is_empty():
+		return "dialogue_action"
+	var flag := str(missing[0])
+	current_quest_policy_quest_id = str(target.get("quest_id", ""))
+	current_quest_policy_objective_flag = flag
+	var recipe := _quest_policy_recipe_for_flag(flag)
+	if not recipe.is_empty():
+		var inputs = recipe.get("inputs", {})
+		if inputs is Dictionary:
+			for item_id in inputs.keys():
+				var item_key := str(item_id)
+				var required_quantity := int(inputs[item_id])
+				current_quest_policy_protected_items[item_key] = required_quantity
+				var inventory_quantity := int(_inventory().get(item_key, 0))
+				var bank_quantity := int(_bank().get(item_key, 0))
+				if inventory_quantity < required_quantity and bank_quantity > 0 and _can_add_inventory_item(item_key, 1):
+					current_quest_policy_target_item = item_key
+					current_quest_policy_target_quantity = min(required_quantity - inventory_quantity, bank_quantity)
+					_add_telemetry_int(current_run_telemetry, "quest_policy_withdrawal_requests", 1)
+					return "bank_withdraw"
+			var recipe_type := str(recipe.get("_audit_recipe_type", ""))
+			if _has_recipe_inputs(recipe):
+				if _recipe_can_complete_now_for_sim(recipe_type, recipe):
+					return _quest_policy_processing_action(recipe_type)
+				if _inventory_slot_count(_inventory()) >= INVENTORY_SLOT_LIMIT and _has_depositable_item():
+					return "bank_deposit"
+			for item_id in inputs.keys():
+				var missing_item := str(item_id)
+				if int(_inventory().get(missing_item, 0)) < int(inputs[item_id]):
+					var producer_action := _quest_policy_producer_action(missing_item)
+					if not producer_action.is_empty():
+						return producer_action
+	for equipped_item in _equipment().values():
+		var equipped_key := str(equipped_item)
+		if not equipped_key.is_empty():
+			current_quest_policy_protected_items[equipped_key] = max(1, int(current_quest_policy_protected_items.get(equipped_key, 0)))
+	if flag == "ate_food" and not _has_usable_item():
+		var bank_food := _first_bank_usable_item()
+		if not bank_food.is_empty() and _can_add_inventory_item(bank_food, 1):
+			current_quest_policy_target_item = bank_food
+			current_quest_policy_target_quantity = 1
+			_add_telemetry_int(current_run_telemetry, "quest_policy_withdrawal_requests", 1)
+			return "bank_withdraw"
+	if flag == "used_bank" and _has_depositable_item():
+		return "bank_deposit"
+	var action := _quest_action_for_flag(flag)
+	if action.is_empty():
+		_add_telemetry_int(current_run_telemetry, "quest_policy_blocked_objectives", 1)
+		return fallback_action
+	return action
+
+
+func _quest_policy_recipe_for_flag(flag: String) -> Dictionary:
+	var wanted_recipe_id := ""
+	var wanted_output_id := ""
+	var recipe_types: Array = []
+	if flag == "smelted_bar":
+		recipe_types = ["smelting"]
+	elif flag == "smithed_gear":
+		recipe_types = ["smithing"]
+	elif flag.begins_with("crafted_"):
+		wanted_recipe_id = flag.trim_prefix("crafted_")
+		wanted_output_id = wanted_recipe_id
+		recipe_types = ["carpentry", "smithing", "herbalism", "smelting"]
+	else:
+		return {}
+	for recipe_type in recipe_types:
+		var recipes = recipes_data.get(str(recipe_type), [])
+		if not (recipes is Array):
+			continue
+		for raw_recipe in recipes:
+			if not (raw_recipe is Dictionary):
+				continue
+			var recipe: Dictionary = raw_recipe.duplicate(true)
+			if wanted_recipe_id.is_empty() or str(recipe.get("recipe_id", "")) == wanted_recipe_id or str(recipe.get("output_item_id", "")) == wanted_output_id:
+				recipe["_audit_recipe_type"] = str(recipe_type)
+				return recipe
+	return {}
+
+
+func _quest_policy_processing_action(recipe_type: String) -> String:
+	match recipe_type:
+		"smelting":
+			return "process_furnace"
+		"smithing":
+			return "process_anvil"
+		"carpentry":
+			return "process_carpentry"
+		"herbalism":
+			return "process_apothecary"
+	return "process_station"
+
+
+func _quest_policy_producer_action(item_id: String, seen: Array = []) -> String:
+	if item_id.is_empty() or item_id in seen:
+		return _quest_policy_raw_item_action(item_id)
+	var next_seen := seen.duplicate()
+	next_seen.append(item_id)
+	for recipe_type in ["smelting", "smithing", "carpentry", "herbalism"]:
+		var recipes = recipes_data.get(recipe_type, [])
+		if not (recipes is Array):
+			continue
+		for raw_recipe in recipes:
+			if not (raw_recipe is Dictionary) or str(raw_recipe.get("output_item_id", "")) != item_id:
+				continue
+			var recipe: Dictionary = raw_recipe
+			if _has_recipe_inputs(recipe) and _recipe_can_complete_now_for_sim(str(recipe_type), recipe):
+				return _quest_policy_processing_action(str(recipe_type))
+			var inputs = recipe.get("inputs", {})
+			if inputs is Dictionary:
+				for input_id in inputs.keys():
+					if int(_inventory().get(str(input_id), 0)) < int(inputs[input_id]):
+						return _quest_policy_producer_action(str(input_id), next_seen)
+	return _quest_policy_raw_item_action(item_id)
+
+
+func _quest_policy_raw_item_action(item_id: String) -> String:
+	if item_id == "logs" or item_id.ends_with("_logs"):
+		return "gather_woodcutting"
+	if item_id.ends_with("_ore") or item_id == "coal":
+		return "gather_mining"
+	if item_id == "raw_shrimp" or item_id == "raw_fish":
+		return "gather_fishing"
+	if item_id.ends_with("herb") or item_id.ends_with("_reeds") or item_id == "bloom_pollen":
+		return "gather_resource"
+	return "gather_resource"
+
+
+func _quest_policy_protects_item(item_id: String) -> bool:
+	if not _quest_policy_active() or item_id.is_empty():
+		return false
+	return int(current_quest_policy_protected_items.get(item_id, 0)) > 0
+
+
+func _record_quest_policy_action_result(action_name: String, before_target_quantity: int, record: Dictionary) -> void:
+	if not _quest_policy_active():
+		return
+	var objective := str(record.get("quest_objective_flag", ""))
+	var action_key := "%s:%s" % [objective, action_name]
+	_increment_count(current_run_telemetry.get("quest_policy_objective_action_counts", {}), action_key)
+	_increment_count(current_run_telemetry.get("quest_policy_quest_counts", {}), str(record.get("quest_policy_quest_id", "")))
+	if action_name == "bank_withdraw" and not current_quest_policy_target_item.is_empty():
+		var after_target_quantity := int(_inventory().get(current_quest_policy_target_item, 0))
+		if after_target_quantity > before_target_quantity:
+			_add_telemetry_int(current_run_telemetry, "quest_policy_withdrawal_successes", 1)
 
 
 func _first_actionable_quest_flag_action(missing: Array, skipped_flag: String = "") -> String:
@@ -2046,6 +2778,15 @@ func _execute_action(action_name: String) -> Dictionary:
 			_emit_hud_request("inventory_item_action_requested", [_first_droppable_item(), "drop"], record)
 		"examine_object":
 			_interact_object(_pick_examinable_object(), "examine", record)
+		"adversarial_invalid_bank":
+			_emit_hud_request("bank_deposit_requested", ["missing_item", -1], record)
+		"adversarial_invalid_shop":
+			_emit_hud_request("shop_buy_requested", ["missing_item", -1], record)
+		"adversarial_invalid_inventory":
+			_emit_hud_request("inventory_item_action_requested", ["missing_item", "invalid_action"], record)
+		"adversarial_rapid_repeat":
+			_emit_hud_request("shop_sell_requested", ["missing_item", -2], record)
+			_emit_hud_request("shop_sell_requested", ["missing_item", -2], record)
 		_:
 			_record_issue("bug", "P2", action_name, "Unknown simulation action requested.", "", {"action_name": action_name})
 	return record
@@ -2384,6 +3125,7 @@ func _record_polish_telemetry(record: Dictionary) -> void:
 	var action_name := str(record.get("action", "unknown"))
 	var feedback := str(record.get("feedback", "")).strip_edges()
 	var previous_feedback := str(record.get("previous_feedback", "")).strip_edges()
+	var gameplay_state_changed := bool(record.get("gameplay_state_changed", record.get("changed_state", false)))
 	var benign_repeated_success := _is_benign_repeated_success_feedback(record, feedback, previous_feedback)
 	_add_telemetry_int(current_run_polish_telemetry, "steps", 1)
 	_increment_count(current_run_polish_telemetry["action_counts"], action_name)
@@ -2405,7 +3147,7 @@ func _record_polish_telemetry(record: Dictionary) -> void:
 			})
 		if not _feedback_explains_failure(feedback):
 			_add_polish_flag("failure_without_clear_reason", action_name, "Failure feedback may not explain the required recovery action.", record)
-	if bool(record.get("changed_state", false)) and (feedback.is_empty() or feedback == previous_feedback) and not benign_repeated_success:
+	if gameplay_state_changed and (feedback.is_empty() or feedback == previous_feedback) and not benign_repeated_success:
 		_add_polish_flag("state_change_weak_feedback", action_name, "State changed but feedback was empty or unchanged.", record)
 	_record_panel_polish(record)
 	_record_quest_polish(record)
@@ -2421,6 +3163,11 @@ func _record_panel_polish(record: Dictionary) -> void:
 	_increment_count(current_run_polish_telemetry["panel_type_counts"], action_name)
 	if not bool(snapshot.get("visible", false)):
 		_add_polish_flag("panel_not_visible", action_name, "Expected interaction panel was not visible after a panel action.", record, snapshot)
+		return
+	if bool(snapshot.get("lightweight_mode", false)):
+		# Simulation-only HUD mode intentionally omits transaction rows to avoid
+		# rebuilding large control trees on every bot action. Do not classify that
+		# harness optimization as a player-facing empty-panel defect.
 		return
 	if str(snapshot.get("title", "")).strip_edges().is_empty():
 		_add_polish_flag("panel_missing_title", action_name, "Visible interaction panel had no title.", record, snapshot)
@@ -2492,7 +3239,16 @@ func _is_benign_repeated_success_feedback(record: Dictionary, feedback: String, 
 	var action_name := str(record.get("action", ""))
 	if action_name in ["open_bank", "open_shop"] and feedback in ["Bank opened", "Shop opened"]:
 		return true
-	if not bool(record.get("changed_state", false)):
+	var lower_feedback := feedback.to_lower()
+	if action_name in ["talk_npc", "dialogue_action"] and (
+		lower_feedback.find("still needed") != -1 or
+		lower_feedback.find("not done") != -1 or
+		lower_feedback.find("not filled") != -1 or
+		lower_feedback.find("still short") != -1 or
+		lower_feedback.find("not ready") != -1
+	):
+		return true
+	if not bool(record.get("gameplay_state_changed", record.get("changed_state", false))):
 		return false
 	return action_name in [
 		"gather_resource",
@@ -2506,7 +3262,10 @@ func _is_benign_repeated_success_feedback(record: Dictionary, feedback: String, 
 		"process_apothecary",
 		"cook",
 		"bank_deposit",
+		"bank_withdraw",
+		"shop_buy",
 		"shop_sell",
+		"drop_item",
 		"pickup_drop",
 	]
 
@@ -2562,6 +3321,13 @@ func _new_telemetry_bucket() -> Dictionary:
 		"coin_spent": 0,
 		"quest_starts": 0,
 		"quest_completions": 0,
+		"quest_policy_protected_item_skips": 0,
+		"quest_policy_withdrawal_requests": 0,
+		"quest_policy_withdrawal_successes": 0,
+		"quest_policy_blocked_objectives": 0,
+		"quest_policy_protected_item_counts": {},
+		"quest_policy_objective_action_counts": {},
+		"quest_policy_quest_counts": {},
 		"path_moves": 0,
 		"path_length_total": 0,
 		"max_path_length": 0,
@@ -2634,6 +3400,10 @@ func _merge_telemetry_bucket(target: Dictionary, source: Dictionary) -> void:
 		"coin_spent",
 		"quest_starts",
 		"quest_completions",
+		"quest_policy_protected_item_skips",
+		"quest_policy_withdrawal_requests",
+		"quest_policy_withdrawal_successes",
+		"quest_policy_blocked_objectives",
 		"path_moves",
 		"path_length_total",
 		"action_cost_samples",
@@ -2644,7 +3414,7 @@ func _merge_telemetry_bucket(target: Dictionary, source: Dictionary) -> void:
 		target[key] = int(target.get(key, 0)) + int(source.get(key, 0))
 	target["max_path_length"] = max(int(target.get("max_path_length", 0)), int(source.get("max_path_length", 0)))
 	target["slowest_action_usec"] = max(int(target.get("slowest_action_usec", 0)), int(source.get("slowest_action_usec", 0)))
-	for count_key in ["action_counts", "slow_action_counts", "slow_action_scenario_counts", "slow_action_tile_counts", "slow_path_length_counts", "failure_action_counts", "tile_visits", "issue_tile_counts", "issue_action_counts", "issue_severity_counts"]:
+	for count_key in ["action_counts", "slow_action_counts", "slow_action_scenario_counts", "slow_action_tile_counts", "slow_path_length_counts", "failure_action_counts", "tile_visits", "issue_tile_counts", "issue_action_counts", "issue_severity_counts", "quest_policy_protected_item_counts", "quest_policy_objective_action_counts", "quest_policy_quest_counts"]:
 		var target_counts = target.get(count_key, {})
 		if not (target_counts is Dictionary):
 			target_counts = {}
@@ -2715,7 +3485,9 @@ func _merge_polish_bucket(target: Dictionary, source: Dictionary) -> void:
 
 
 func _telemetry_report(top_limit: int) -> Dictionary:
-	return _finalize_telemetry_bucket(telemetry_summary, top_limit)
+	var report := _finalize_telemetry_bucket(telemetry_summary, top_limit)
+	report["quest_policy"] = str(config.get("quest_policy", DEFAULT_QUEST_POLICY))
+	return report
 
 
 func _polish_report(top_limit: int) -> Dictionary:
@@ -2974,6 +3746,7 @@ func _simulation_scorecard() -> Dictionary:
 	var polish := _polish_report(10)
 	var balance := _balance_profile_report(10)
 	var performance := _performance_report(10)
+	var coverage := _coverage_report()
 	var severity_counts := _issue_counts_by_severity()
 	var category_counts := _issue_counts_by_category()
 	var probe_summary = scenario_probe_report.get("summary", {}) if scenario_probe_report is Dictionary else {}
@@ -3025,6 +3798,7 @@ func _simulation_scorecard() -> Dictionary:
 			"slow_action_rate": float(performance.get("slow_action_rate", 0.0)),
 			"average_action_cost_usec": float(performance.get("average_action_cost_usec", 0.0)),
 			"average_path_length": float(performance.get("average_path_length", 0.0)),
+			"coverage": coverage,
 		},
 	}
 	var categories := {}
@@ -3056,25 +3830,27 @@ func _simulation_scorecard() -> Dictionary:
 	)
 	categories["skill_progression"] = _scorecard_category(
 		"Skill progression",
-		_bounded_score((_target_score(average_xp, 100.0) * 0.55) + (_target_score(float(_top_count_total(balance.get("top_xp_skills", []))), 3.0) * 0.25) + (clean_run_rate * 20.0) - float(_probe_issue_count_matching(["scenario_no_xp_gain"]) * 10)),
-		"medium",
+		_bounded_score((_target_score(average_xp, 100.0) * 0.55) + (_target_score(float(_top_count_total(balance.get("top_xp_skills", []))), 3.0) * 0.25) + (clean_run_rate * 20.0) - float(_probe_issue_count_matching(["scenario_no_xp_gain"]) * 10) - float(_coverage_missing_count("skills") * 4)),
+		"medium-low" if _coverage_missing_count("skills") > 0 else "medium",
 		{
 			"average_total_xp": average_xp,
 			"top_xp_skills": balance.get("top_xp_skills", []),
 			"scenario_no_xp_gain_probe_issues": _probe_issue_count_matching(["scenario_no_xp_gain"]),
+			"untested_skill_count": _coverage_missing_count("skills"),
 		},
 		"Rewards XP gain and multi-skill coverage; penalizes explicit no-XP probe diagnostics."
 	)
 	categories["quest_flow"] = _scorecard_category(
 		"Quest flow",
-		_bounded_score(35.0 + (quest_completion_rate * 45.0) + (_target_score(float(balance.get("started_quests", 0)), 3.0) * 0.10) + (_target_score(float(balance.get("completed_quests", 0)), 2.0) * 0.10) - float(_issue_count_matching(category_counts, ["quest", "softlock"]) * 8) - float(_probe_issue_count_matching(["quest"]) * 8)),
-		"medium",
+		_bounded_score(35.0 + (quest_completion_rate * 45.0) + (_target_score(float(balance.get("started_quests", 0)), 3.0) * 0.10) + (_target_score(float(balance.get("completed_quests", 0)), 2.0) * 0.10) - float(_issue_count_matching(category_counts, ["quest", "softlock"]) * 8) - float(_probe_issue_count_matching(["quest"]) * 8) - float(_coverage_missing_count("quests") * 3)),
+		"medium-low" if _coverage_missing_count("quests") > 0 else "medium",
 		{
 			"started_quests": int(balance.get("started_quests", 0)),
 			"completed_quests": int(balance.get("completed_quests", 0)),
 			"quest_completion_rate": quest_completion_rate,
 			"quest_or_softlock_issue_count": _issue_count_matching(category_counts, ["quest", "softlock"]),
 			"quest_probe_issue_count": _probe_issue_count_matching(["quest"]),
+			"untested_quest_count": _coverage_missing_count("quests"),
 		},
 		"Rewards started and completed quests; penalizes quest, softlock, and quest-probe findings."
 	)
@@ -3387,6 +4163,7 @@ func _write_summary_file() -> void:
 		"performance_observations": "%s/performance_observations.json" % str(config["output_dir"]),
 		"polish_telemetry": "%s/polish_telemetry.json" % str(config["output_dir"]),
 		"manual_polish_review": "%s/manual_polish_review.md" % str(config["output_dir"]),
+		"coverage_manifest": "%s/coverage_manifest.json" % str(config["output_dir"]),
 		"snapshots": "%s/snapshots" % str(config["output_dir"]),
 	}
 	if str(config["trace"]) == "all":
@@ -3404,6 +4181,8 @@ func _write_summary_file() -> void:
 			"trace": str(config["trace"]),
 			"balance_profile": str(config["balance_profile"]),
 			"scenario_probes": str(config["scenario_probes"]),
+			"campaign": str(config.get("campaign", DEFAULT_CAMPAIGN)),
+			"quest_policy": str(config.get("quest_policy", DEFAULT_QUEST_POLICY)),
 			"output_dir": str(config["output_dir"]),
 			"timeout_seconds": float(config["timeout_seconds"]),
 			"fail_on_issues": bool(config["fail_on_issues"]),
@@ -3423,6 +4202,8 @@ func _write_summary_file() -> void:
 		"balance": _balance_profile_report(10),
 		"performance": _performance_report(10),
 		"scenario_probes": _normalize_value(scenario_probe_report),
+		"coverage": _normalize_value(_coverage_report()),
+		"opportunities": _normalize_value(_opportunity_report()),
 		"scorecard": scorecard,
 		"output_files": output_files,
 		"replay_guidance": {
@@ -3444,7 +4225,24 @@ func _write_summary_file() -> void:
 	_write_performance_observations(output_files)
 	_write_polish_telemetry(output_files)
 	_write_manual_polish_review(output_files)
+	_write_coverage_manifest(output_files)
 	_write_replay_manifest(output_files)
+
+
+func _write_coverage_manifest(output_files: Dictionary) -> void:
+	var report := {
+		"type": "coverage_manifest",
+		"campaign": str(config.get("campaign", DEFAULT_CAMPAIGN)),
+		"quest_policy": str(config.get("quest_policy", DEFAULT_QUEST_POLICY)),
+		"coverage": _coverage_report(),
+		"opportunities": _opportunity_report(),
+		"output_files": output_files.duplicate(true),
+	}
+	var file := FileAccess.open("%s/coverage_manifest.json" % str(config["output_dir"]), FileAccess.WRITE)
+	if file == null:
+		push_error("Could not write simulation coverage_manifest.json.")
+		return
+	file.store_string(JSON.stringify(_normalize_value(report), "\t", true))
 
 
 func _write_telemetry_summary(output_files: Dictionary) -> void:
@@ -4035,6 +4833,7 @@ func _build_replay_metadata() -> Dictionary:
 	var data_hashes := {
 		"world": _file_hash(WORLD_PATH),
 		"items": _file_hash(ITEMS_PATH),
+		"skills": _file_hash(SKILLS_PATH),
 		"recipes": _file_hash(RECIPES_PATH),
 		"quests": _file_hash(QUESTS_PATH),
 	}
@@ -4060,6 +4859,9 @@ func _build_replay_metadata() -> Dictionary:
 		"balance_profile": str(config["balance_profile"]),
 		"balance_profile_definition": _balance_profile_definition(),
 		"scenario_probes": str(config["scenario_probes"]),
+		"campaign": str(config.get("campaign", DEFAULT_CAMPAIGN)),
+		"quest_policy": str(config.get("quest_policy", DEFAULT_QUEST_POLICY)),
+		"action_policy": "adversarial" if str(config.get("campaign", DEFAULT_CAMPAIGN)) == "adversarial" else "safe",
 		"trace": str(config["trace"]),
 		"output_dir": str(config["output_dir"]),
 		"publish_latest": bool(config.get("publish_latest", false)),
@@ -4076,6 +4878,7 @@ func _run_replay_metadata(seed: int, scenario: String) -> Dictionary:
 		"base_seed": int(config["seed"]),
 		"run_index": current_run_index,
 		"scenario": scenario,
+		"quest_policy": str(config.get("quest_policy", DEFAULT_QUEST_POLICY)),
 		"steps": int(config["steps"]),
 		"trace": str(config["trace"]),
 		"build_hash": str(replay_metadata.get("build_hash", "")),
@@ -4330,6 +5133,11 @@ func _pick_resource(skill_id: String) -> Dictionary:
 			continue
 		if _resource_is_reasonable(resource):
 			candidates.append(resource)
+	var probe_target := str(current_state.get("probe_target_resource_id", ""))
+	if not probe_target.is_empty():
+		for resource in candidates:
+			if str(resource.get("id", "")) == probe_target:
+				return resource
 	return _random_entry(candidates, {})
 
 
@@ -4346,9 +5154,26 @@ func _resource_is_reasonable(resource: Dictionary) -> bool:
 
 
 func _resource_reward_can_fit(resource: Dictionary) -> bool:
+	var add_items := {}
 	var item_id := str(resource.get("item_reward", ""))
 	var quantity := int(resource.get("quantity_reward", 1))
-	return _can_add_inventory_item(item_id, quantity)
+	if item_id.is_empty() or quantity <= 0:
+		return false
+	add_items[item_id] = quantity
+	var secondary_item := str(resource.get("secondary_item_reward", ""))
+	var secondary_quantity := int(resource.get("secondary_quantity_reward", 1))
+	var secondary_chance := float(resource.get("secondary_drop_chance", 0.0))
+	if not secondary_item.is_empty() and secondary_quantity > 0 and secondary_chance > 0.0:
+		add_items[secondary_item] = int(add_items.get(secondary_item, 0)) + secondary_quantity
+	return _inventory_can_transact_for_sim({}, add_items)
+
+
+func _dialogue_action_blocked_for_sim() -> bool:
+	# Dialogue can target any NPC in non-quest-chaser scenarios, so checking only
+	# the active quest target cannot prove that the selected NPC is safe. A full
+	# inventory is sufficient to make a quest-reward dialogue attempt an expected
+	# block; recover space before selecting that action in the content campaign.
+	return _inventory_slot_count(_inventory()) >= INVENTORY_SLOT_LIMIT
 
 
 func _pick_mob() -> Dictionary:
@@ -4387,6 +5212,11 @@ func _mob_is_dead_for_sim(mob: Dictionary, mob_states: Dictionary) -> bool:
 
 
 func _pick_npc() -> Dictionary:
+	var probe_target := str(current_state.get("probe_target_npc_id", ""))
+	if not probe_target.is_empty():
+		for npc in npcs:
+			if npc is Dictionary and str(npc.get("id", "")) == probe_target:
+				return npc
 	if current_scenario == "quest_chaser":
 		var active := _active_quest_target()
 		if not active.is_empty():
@@ -4450,6 +5280,11 @@ func _pick_examinable_object() -> Dictionary:
 	for station in stations.values():
 		if station is Dictionary:
 			all_objects.append(station)
+	var probe_target := str(current_state.get("probe_target_examine_object_id", ""))
+	if not probe_target.is_empty():
+		for object_data in all_objects:
+			if object_data is Dictionary and str(object_data.get("id", "")) == probe_target:
+				return object_data
 	return _random_entry(all_objects, {})
 
 
@@ -4489,8 +5324,13 @@ func _ground_item_can_fit(item: Dictionary) -> bool:
 
 func _first_depositable_item() -> String:
 	for item_id in _sorted_keys(_inventory()):
-		if str(item_id) != "coins" and int(_inventory().get(item_id, 0)) > 0 and not _is_protected_gathering_tool(str(item_id)):
-			return str(item_id)
+		var item_key := str(item_id)
+		if item_key != "coins" and int(_inventory().get(item_id, 0)) > 0 and not _is_protected_gathering_tool(item_key):
+			if _quest_policy_protects_item(item_key):
+				_add_telemetry_int(current_run_telemetry, "quest_policy_protected_item_skips", 1)
+				_increment_count(current_run_telemetry.get("quest_policy_protected_item_counts", {}), item_key)
+				continue
+			return item_key
 	return ""
 
 
@@ -4499,6 +5339,8 @@ func _first_bank_item() -> String:
 		var usable_item := _first_bank_usable_item()
 		if not usable_item.is_empty():
 			return usable_item
+	if _quest_policy_active() and not current_quest_policy_target_item.is_empty() and int(_bank().get(current_quest_policy_target_item, 0)) > 0 and _can_add_inventory_item(current_quest_policy_target_item):
+		return current_quest_policy_target_item
 	for item_id in _sorted_keys(_bank()):
 		if int(_bank().get(item_id, 0)) > 0 and _can_add_inventory_item(str(item_id)):
 			return str(item_id)
@@ -4512,8 +5354,13 @@ func _first_sellable_item() -> String:
 		var definition = items_data.get(str(item_id), {})
 		if _quest_needs_food_item(str(item_id), definition):
 			continue
-		if definition is Dictionary and int(definition.get("sell_price", 0)) > 0 and int(_inventory().get(item_id, 0)) > 0 and not _is_protected_gathering_tool(str(item_id)):
-			return str(item_id)
+		var item_key := str(item_id)
+		if definition is Dictionary and int(definition.get("sell_price", 0)) > 0 and int(_inventory().get(item_id, 0)) > 0 and not _is_protected_gathering_tool(item_key):
+			if _quest_policy_protects_item(item_key):
+				_add_telemetry_int(current_run_telemetry, "quest_policy_protected_item_skips", 1)
+				_increment_count(current_run_telemetry.get("quest_policy_protected_item_counts", {}), item_key)
+				continue
+			return item_key
 	return ""
 
 
@@ -4538,12 +5385,19 @@ func _first_equippable_item() -> String:
 
 func _first_droppable_item() -> String:
 	for item_id in _sorted_keys(_inventory()):
+		var item_key := str(item_id)
 		if int(_inventory().get(item_id, 0)) > 0:
-			return str(item_id)
+			if _quest_policy_protects_item(item_key):
+				_add_telemetry_int(current_run_telemetry, "quest_policy_protected_item_skips", 1)
+				_increment_count(current_run_telemetry.get("quest_policy_protected_item_counts", {}), item_key)
+				continue
+			return item_key
 	return ""
 
 
 func _bank_quantity() -> int:
+	if _quest_policy_active() and current_quest_policy_target_quantity > 0:
+		return current_quest_policy_target_quantity
 	return 0 if current_rng.randf() < 0.25 else 1
 
 
@@ -5150,9 +6004,12 @@ func _interaction_panel_snapshot() -> Dictionary:
 		"title": "",
 		"rows": 0,
 		"buttons": 0,
+		"lightweight_mode": false,
 	}
 	if current_hud == null:
 		return snapshot
+	var lightweight_mode = current_hud.get("simulation_lightweight_mode")
+	snapshot["lightweight_mode"] = bool(lightweight_mode)
 	if current_hud.has_method("interaction_panel_is_visible"):
 		snapshot["visible"] = bool(current_hud.call("interaction_panel_is_visible"))
 	if current_hud.has_method("interaction_panel_title_text"):
@@ -5179,9 +6036,6 @@ func _quest_states() -> Dictionary:
 		var states = quest_root.get("quests", {})
 		if states is Dictionary:
 			return states
-	var legacy = current_state.get("quest_progress", {})
-	if legacy is Dictionary:
-		return legacy
 	return {}
 
 
@@ -5265,6 +6119,14 @@ func _feedback_explains_failure(feedback: String) -> bool:
 
 
 func _state_digest() -> String:
+	return _state_digest_with_position(true)
+
+
+func _gameplay_state_digest() -> String:
+	return _state_digest_with_position(false)
+
+
+func _state_digest_with_position(include_player_tile: bool) -> String:
 	var quest_root = current_state.get("quest_state", {})
 	var combat = current_state.get("combat", {})
 	var world_state = current_state.get("world", {})
@@ -5276,8 +6138,9 @@ func _state_digest() -> String:
 		"quest_state": _normalize_value(quest_root),
 		"combat": _normalize_value(combat),
 		"world": _normalize_value(world_state),
-		"player_tile": [_player_tile().x, _player_tile().y],
 	}
+	if include_player_tile:
+		digest["player_tile"] = [_player_tile().x, _player_tile().y]
 	return JSON.stringify(digest)
 
 

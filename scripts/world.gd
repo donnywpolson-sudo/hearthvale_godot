@@ -6,6 +6,7 @@ signal feedback_changed(message: String)
 signal player_tile_changed(tile: Vector2i)
 signal object_activated(object_data: Dictionary)
 signal camera_heading_changed(heading_degrees: float)
+signal persistent_state_changed
 
 const WORLD_DATA_PATH := "res://data/world.json"
 const TILE_SIZE := 1.0
@@ -27,6 +28,11 @@ const SHELL_MAX_TILE := Vector2i(50, 25)
 const VISUAL_BASE_Y := -0.075
 const VISUAL_OVERLAY_Y := -0.025
 const VISUAL_DETAIL_Y := 0.015
+const PLAYER_WALK_ANIMATION_SPEED := 9.0
+const PLAYER_IDLE_ANIMATION_SPEED := 1.8
+const PLAYER_WALK_BOB := 0.035
+const PLAYER_IDLE_BOB := 0.012
+const PLAYER_ACTIVITY_DURATION := 0.45
 
 const MATERIAL_COLORS := {
 	"grass_dark": Color(0.17, 0.36, 0.19, 1.0),
@@ -78,6 +84,10 @@ var middle_mouse_panning := false
 var last_camera_heading_degrees := -999.0
 var selected_label: Label3D
 var hover_object_key := ""
+var player_animation_time := 0.0
+var player_activity := ""
+var player_activity_remaining := 0.0
+var state_bound := false
 
 
 func _ready() -> void:
@@ -95,6 +105,7 @@ func _ready() -> void:
 
 
 func initialize_from_state(state: Dictionary) -> void:
+	state_bound = false
 	state_ref = state
 	var player_state = state.get("player", {})
 	if player_state is Dictionary and player_state.has("tile"):
@@ -105,14 +116,27 @@ func initialize_from_state(state: Dictionary) -> void:
 	player.global_position = _tile_to_player_world(current_tile)
 	destination = player.global_position
 	_initialize_camera_from_state(state)
+	var restored_with_changes := _restore_ground_items_from_state()
+	state_bound = true
 	player_tile_changed.emit(current_tile)
 	_emit_camera_heading_if_changed(true)
 	feedback_changed.emit("Left-click objects for default actions. Right-click objects for options.")
+	if restored_with_changes:
+		persistent_state_changed.emit()
+
+
+func trigger_activity_animation(activity: String) -> void:
+	var clean_activity := activity.strip_edges().to_lower()
+	if clean_activity not in ["gather", "craft", "combat"]:
+		return
+	player_activity = clean_activity
+	player_activity_remaining = PLAYER_ACTIVITY_DURATION
 
 
 func _process(delta: float) -> void:
 	_update_camera(delta)
 	_update_player(delta)
+	_update_player_animation(delta)
 	_update_hover()
 
 
@@ -137,165 +161,27 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-func run_playable_shell_smoke() -> bool:
-	var start_tile := current_tile
-	var camera_position_start := camera_pivot.global_position
-	_set_destination_tile(current_tile + Vector2i(1, 0))
-	for _index in range(120):
-		_update_player(1.0 / 60.0)
-		_update_camera(1.0 / 60.0)
-	if current_tile == start_tile:
-		return false
-	if camera_pivot.global_position.distance_to(camera_position_start) > 0.001:
-		return false
-	if not (player is CharacterBody3D and camera is Camera3D and camera.projection == Camera3D.PROJECTION_PERSPECTIVE and not objects_by_tile.is_empty()):
-		return false
-
-	var zoom_position_start := camera.position
-	var zoom_start := camera.fov
-	_zoom_in()
-	if camera.fov >= zoom_start or camera.position != zoom_position_start:
-		return false
-	_zoom_out()
-	_zoom_out()
-	if camera.fov <= zoom_start or camera.position != zoom_position_start:
-		return false
-
-	var resource := _first_object_of_type("resource")
-	if resource.is_empty() or _default_action_for_object(resource) == "walk":
-		return false
-	var hover_text := _hover_text_for_object(resource)
-	if hover_text.is_empty() or not hover_text.contains(str(resource.get("label", ""))):
-		return false
-	var fishing_resource := _first_resource_with_skill("fishing")
-	if fishing_resource.is_empty():
-		return false
-	state_ref["inventory"] = {"fishing_rod": 1}
-	var rod_only_options := _menu_options_for_object(fishing_resource)
-	if not _menu_has_label(rod_only_options, "Fish") or _menu_has_label(rod_only_options, "Rod"):
-		return false
-	state_ref["inventory"] = {"small_fishing_net": 1, "fishing_rod": 1}
-	var multi_tool_options := _menu_options_for_object(fishing_resource)
-	if not _menu_has_label(multi_tool_options, "Net") or not _menu_has_label(multi_tool_options, "Rod") or _menu_has_label(multi_tool_options, "Fish"):
-		return false
-	var high_level_mob := _first_mob_above_player_level()
-	if high_level_mob.is_empty():
-		return false
-	if _default_action_for_object(high_level_mob) != "walk":
-		return false
-	for option in _menu_options_for_object(high_level_mob):
-		if option is Dictionary and str(option.get("action", "")) == "attack":
-			return true
-	return false
+func find_ground_drop_tile(origin: Vector2i, reserved: Dictionary = {}) -> Vector2i:
+	var max_distance := int(world_data.get("width", 30)) + int(world_data.get("height", 30))
+	for distance in range(0, max_distance + 1):
+		for y_offset in range(-distance, distance + 1):
+			var x_distance: int = distance - absi(y_offset)
+			var candidates: Array[Vector2i] = [origin + Vector2i(-x_distance, y_offset)]
+			if x_distance > 0:
+				candidates.append(origin + Vector2i(x_distance, y_offset))
+			for candidate in candidates:
+				if reserved.has(candidate) or objects_by_tile.has(candidate):
+					continue
+				if _is_walkable_tile(candidate) and _near_shell_area(candidate):
+					return candidate
+	return Vector2i(-1, -1)
 
 
-func run_camera_minimap_smoke() -> bool:
-	_force_player_tile(Vector2i(15, 15))
-	_set_camera_center(_tile_to_player_world(current_tile))
-	_set_camera_heading_degrees(35.0)
-	var start_camera_center := camera_pivot.global_position
-	var target_tile := _first_camera_smoke_walk_target()
-	if target_tile == current_tile:
+func add_ground_drop(tile: Vector2i, item: Dictionary) -> bool:
+	if not _is_walkable_tile(tile) or not _near_shell_area(tile) or objects_by_tile.has(tile):
 		return false
-	if not _set_destination_tile(target_tile):
+	if str(item.get("object_id", "")).is_empty() or str(item.get("item_id", "")).is_empty() or int(item.get("quantity", 0)) <= 0:
 		return false
-	for _index in range(180):
-		_update_player(1.0 / 60.0)
-		_update_camera(1.0 / 60.0)
-		if not moving:
-			break
-	if current_tile != target_tile:
-		return false
-	if camera_pivot.global_position.distance_to(start_camera_center) > 0.001:
-		return false
-	_pan_camera_by_screen_delta(Vector2(48.0, -28.0))
-	var panned_camera_center := camera_pivot.global_position
-	if panned_camera_center.distance_to(start_camera_center) <= 0.001:
-		return false
-	reset_camera_north()
-	if absf(_camera_heading_degrees()) > 0.1:
-		return false
-	if camera_pivot.global_position.distance_to(panned_camera_center) > 0.001:
-		return false
-	var minimap_data := get_minimap_data()
-	var minimap_objects = minimap_data.get("objects", [])
-	return int(minimap_data.get("width", 0)) > 0 and int(minimap_data.get("height", 0)) > 0 and minimap_objects is Array and not minimap_objects.is_empty()
-
-
-func run_pathfinding_interaction_smoke() -> bool:
-	_force_player_tile(Vector2i(15, 15))
-	if _set_destination_tile(Vector2i(6, 17)):
-		return false
-	if current_tile != Vector2i(15, 15) or moving:
-		return false
-
-	var checks := [
-		{"type": "resource", "tile": Vector2i(10, 11)},
-		{"type": "npc", "tile": Vector2i(16, 13)},
-		{"type": "station", "tile": Vector2i(13, 14)},
-		{"type": "station", "tile": Vector2i(23, 15)},
-	]
-	add_ground_drop(Vector2i(16, 15), {"object_id": "path_smoke_drop", "item_id": "coins", "quantity": 1})
-	checks.append({"type": "ground_item", "tile": Vector2i(16, 15)})
-
-	for check in checks:
-		_force_player_tile(Vector2i(15, 15))
-		var tile: Vector2i = check["tile"]
-		var object_data = objects_by_tile.get(tile, {})
-		if not (object_data is Dictionary) or str(object_data.get("type", "")) != str(check["type"]):
-			return false
-		var target_tile := _interaction_target_tile(object_data)
-		if target_tile == Vector2i(-1, -1):
-			return false
-		if not _set_destination_tile(target_tile):
-			return false
-		_force_player_tile(target_tile)
-		if not _is_within_interaction_range(current_tile, tile):
-			return false
-		if _is_tile_blocked(current_tile):
-			return false
-		if str(check["type"]) == "resource" and current_tile == tile:
-			return false
-	return true
-
-
-func run_visual_recreation_smoke() -> bool:
-	if world_environment == null or world_environment.environment == null:
-		return false
-	if terrain_root.find_child("TerrainBase", false, false) == null:
-		return false
-	if terrain_root.find_child("TerrainOverlays", false, false) == null:
-		return false
-	if terrain_root.find_child("TerrainDetails", false, false) == null:
-		return false
-	var bevel_mesh := _beveled_box_mesh(Vector3(0.5, 0.5, 0.5), 0.06)
-	if bevel_mesh == null or bevel_mesh.get_surface_count() == 0:
-		return false
-	var checks := {
-		"rat": "rat_tail",
-		"skeleton": "skeleton_skull",
-		"wolf": "wolf_ear_a",
-		"slime": "slime_blob",
-		"mire_bat": "bat_left_wing",
-		"fen_crawler": "crawler_shell",
-		"target_dummy": "dummy_center_mark",
-		"mage_imp": "imp_spell",
-		"archer_goblin": "archer_bow",
-		"bandit": "bandit_blade",
-		"goblin": "mob_body",
-	}
-	for visual_kind in checks.keys():
-		var root := Node3D.new()
-		_add_mob_visual(root, {"visual_kind": visual_kind, "level": 5}, Color(0.44, 0.60, 0.38, 1.0))
-		var expected_name := str(checks[visual_kind])
-		var found := root.find_child(expected_name, true, false) != null
-		root.queue_free()
-		if not found:
-			return false
-	return true
-
-
-func add_ground_drop(tile: Vector2i, item: Dictionary) -> void:
 	var label := "%d %s" % [int(item.get("quantity", 1)), str(item.get("item_id", "item")).replace("_", " ")]
 	var data: Dictionary = item.duplicate(true)
 	data["type"] = "ground_item"
@@ -303,8 +189,10 @@ func add_ground_drop(tile: Vector2i, item: Dictionary) -> void:
 	data["label"] = label
 	data["tile"] = tile
 	var marker: Node3D = _add_world_object(tile, label, Color(0.95, 0.78, 0.25, 1.0), data, "drop")
+	if marker == null:
+		return false
 	data["marker"] = marker
-	objects_by_tile[tile] = data
+	return true
 
 
 func remove_ground_item(object_data: Dictionary) -> void:
@@ -319,6 +207,53 @@ func remove_ground_item(object_data: Dictionary) -> void:
 		if marker is Node:
 			marker.queue_free()
 		objects_by_tile.erase(tile)
+
+
+func _restore_ground_items_from_state() -> bool:
+	var combat = state_ref.get("combat", {})
+	if not (combat is Dictionary):
+		return false
+	var saved_items = combat.get("ground_items", [])
+	if not (saved_items is Array):
+		combat["ground_items"] = []
+		return true
+	var sequence: int = max(0, int(combat.get("ground_drop_sequence", 0)))
+	var used_ids := {}
+	var restored_items: Array[Dictionary] = []
+	var changed := false
+	for raw_item in saved_items:
+		if not (raw_item is Dictionary):
+			changed = true
+			continue
+		var item: Dictionary = raw_item.duplicate(true)
+		if str(item.get("item_id", "")).is_empty() or int(item.get("quantity", 0)) <= 0:
+			changed = true
+			continue
+		var object_id := str(item.get("object_id", ""))
+		if object_id.is_empty() or used_ids.has(object_id):
+			sequence += 1
+			object_id = "ground_item_%08d" % sequence
+			item["object_id"] = object_id
+			changed = true
+		used_ids[object_id] = true
+		var desired_tile := _object_tile(item)
+		if desired_tile == Vector2i(-1, -1):
+			desired_tile = current_tile
+		var assigned_tile := find_ground_drop_tile(desired_tile)
+		if assigned_tile == Vector2i(-1, -1):
+			changed = true
+			continue
+		if assigned_tile != desired_tile:
+			changed = true
+		item["tile"] = [assigned_tile.x, assigned_tile.y]
+		item["type"] = "ground_item"
+		if add_ground_drop(assigned_tile, item):
+			restored_items.append(item)
+		else:
+			changed = true
+	combat["ground_items"] = restored_items
+	combat["ground_drop_sequence"] = max(sequence, int(combat.get("ground_drop_sequence", 0)))
+	return changed or restored_items.size() != saved_items.size()
 
 
 func debug_current_tile() -> Vector2i:
@@ -358,18 +293,33 @@ func debug_spawn_mob(mob_data: Dictionary) -> Dictionary:
 
 
 func debug_spawn_ground_drop(item_id: String, quantity: int) -> Dictionary:
-	var tile := _debug_open_tile_near_player(false)
+	var tile := find_ground_drop_tile(current_tile)
 	if tile == Vector2i(-1, -1):
 		feedback_changed.emit("Debug drop failed: no open adjacent tile")
 		return {}
+	var combat = state_ref.get("combat", {})
+	if not (combat is Dictionary):
+		combat = {"current_hitpoints": 10, "mobs": {}, "ground_items": [], "status_effects": {}, "ground_drop_sequence": 0}
+		state_ref["combat"] = combat
+	var sequence := int(combat.get("ground_drop_sequence", 0)) + 1
+	combat["ground_drop_sequence"] = sequence
 	var item := {
-		"object_id": "debug_drop_%d" % Time.get_ticks_msec(),
+		"object_id": "ground_item_%08d" % sequence,
 		"item_id": item_id,
 		"quantity": quantity,
 		"tile": [tile.x, tile.y],
 		"type": "ground_item",
 	}
-	add_ground_drop(tile, item)
+	if not add_ground_drop(tile, item):
+		feedback_changed.emit("Debug drop failed: tile became occupied")
+		return {}
+	var ground_items = combat.get("ground_items", [])
+	if not (ground_items is Array):
+		ground_items = []
+	ground_items.append(item)
+	combat["ground_items"] = ground_items
+	if state_bound:
+		persistent_state_changed.emit()
 	feedback_changed.emit("Debug dropped %d %s at %d, %d" % [quantity, item_id.replace("_", " "), tile.x, tile.y])
 	return item
 
@@ -444,6 +394,8 @@ func _update_player(delta: float) -> void:
 		current_tile = _world_to_tile(player.global_position)
 		state_ref["player"] = {"tile": [current_tile.x, current_tile.y], "position": [current_tile.x + 0.5, current_tile.y + 0.5]}
 		player_tile_changed.emit(current_tile)
+		if state_bound:
+			persistent_state_changed.emit()
 		if not path_tiles.is_empty():
 			_advance_path()
 			return
@@ -452,6 +404,37 @@ func _update_player(delta: float) -> void:
 		return
 	player.global_position += offset.normalized() * step
 	player.look_at(Vector3(destination.x, player.global_position.y, destination.z), Vector3.UP)
+
+
+func _update_player_animation(delta: float) -> void:
+	var rig := player.get_node_or_null("ReadabilityRig") as Node3D
+	if rig == null:
+		return
+	var animation_speed := PLAYER_WALK_ANIMATION_SPEED if moving else PLAYER_IDLE_ANIMATION_SPEED
+	player_animation_time += delta * animation_speed
+	var bob_amount := PLAYER_WALK_BOB if moving else PLAYER_IDLE_BOB
+	rig.position.y = sin(player_animation_time * 2.0) * bob_amount
+	var left_boot := rig.get_node_or_null("left_boot") as Node3D
+	var right_boot := rig.get_node_or_null("right_boot") as Node3D
+	if left_boot != null:
+		left_boot.rotation.z = sin(player_animation_time) * (0.18 if moving else 0.035)
+	if right_boot != null:
+		right_boot.rotation.z = sin(player_animation_time + PI) * (0.18 if moving else 0.035)
+	var activity_amount := 0.0
+	if player_activity_remaining > 0.0:
+		player_activity_remaining = maxf(0.0, player_activity_remaining - delta)
+		activity_amount = sin((1.0 - player_activity_remaining / PLAYER_ACTIVITY_DURATION) * PI)
+	else:
+		player_activity = ""
+	rig.rotation = Vector3.ZERO
+	if activity_amount > 0.0:
+		match player_activity:
+			"gather":
+				rig.rotation.z = -0.20 * activity_amount
+			"craft":
+				rig.rotation.x = 0.14 * activity_amount
+			"combat":
+				rig.rotation.y = 0.28 * activity_amount
 
 
 func _walk_to_screen_position(screen_position: Vector2) -> void:
@@ -536,11 +519,21 @@ func _set_destination_tile(tile: Vector2i) -> bool:
 	if not _is_walkable_tile(tile):
 		feedback_changed.emit("No path")
 		return false
-	var route := _find_path(current_tile, tile)
-	if route.is_empty() and tile != current_tile:
+	return _set_destination_route(tile, _find_path(current_tile, tile))
+
+
+func _set_destination_route(tile: Vector2i, route) -> bool:
+	if not _is_walkable_tile(tile):
 		feedback_changed.emit("No path")
 		return false
-	path_tiles = route
+	var route_array: Array = route if route is Array else []
+	if route_array.is_empty() and tile != current_tile:
+		feedback_changed.emit("No path")
+		return false
+	path_tiles = []
+	for step in route_array:
+		if step is Vector2i:
+			path_tiles.append(step)
 	if path_tiles.is_empty():
 		destination = _tile_to_player_world(tile)
 		destination_marker.global_position = _tile_to_ground_world(tile) + Vector3(0.0, 0.04, 0.0)
@@ -556,11 +549,12 @@ func _set_destination_tile(tile: Vector2i) -> bool:
 
 
 func _set_destination_near_object(object_data: Dictionary) -> bool:
-	var target_tile := _interaction_target_tile(object_data)
-	if target_tile == Vector2i(-1, -1):
+	var route_info := _interaction_target_route(object_data)
+	var target_tile = route_info.get("tile", Vector2i(-1, -1))
+	if not (target_tile is Vector2i) or target_tile == Vector2i(-1, -1):
 		feedback_changed.emit("No path")
 		return false
-	return _set_destination_tile(target_tile)
+	return _set_destination_route(target_tile, route_info.get("path", []))
 
 
 func _advance_path() -> void:
@@ -951,11 +945,19 @@ func _sync_camera_state() -> void:
 	var camera_state = state_ref.get("camera", {})
 	if not (camera_state is Dictionary):
 		camera_state = {}
+	var changed := (
+		float(camera_state.get("center_x", camera_center.x)) != camera_center.x
+		or float(camera_state.get("center_y", camera_center.z)) != camera_center.z
+		or float(camera_state.get("heading", _camera_heading_degrees())) != _camera_heading_degrees()
+		or float(camera_state.get("zoom", camera.fov)) != camera.fov
+	)
 	camera_state["center_x"] = camera_center.x
 	camera_state["center_y"] = camera_center.z
 	camera_state["heading"] = _camera_heading_degrees()
 	camera_state["zoom"] = camera.fov
 	state_ref["camera"] = camera_state
+	if changed and state_bound:
+		persistent_state_changed.emit()
 
 
 func _configure_lighting() -> void:
@@ -1023,13 +1025,16 @@ func _build_terrain() -> void:
 
 
 func _add_terrain_base(parent: Node3D) -> void:
-	var shell_size := SHELL_MAX_TILE - SHELL_MIN_TILE + Vector2i.ONE
-	var center := Vector3(
-		float(SHELL_MIN_TILE.x + SHELL_MAX_TILE.x + 1) * 0.5 * TILE_SIZE,
-		VISUAL_BASE_Y,
-		float(SHELL_MIN_TILE.y + SHELL_MAX_TILE.y + 1) * 0.5 * TILE_SIZE
+	var world_size := Vector2i(
+		int(world_data.get("width", 30)),
+		int(world_data.get("height", 30))
 	)
-	var size := Vector3(float(shell_size.x) * TILE_SIZE, 0.08, float(shell_size.y) * TILE_SIZE)
+	var center := Vector3(
+		float(world_size.x) * 0.5 * TILE_SIZE,
+		VISUAL_BASE_Y,
+		float(world_size.y) * 0.5 * TILE_SIZE
+	)
+	var size := Vector3(float(world_size.x) * TILE_SIZE, 0.08, float(world_size.y) * TILE_SIZE)
 	_add_flat_box(parent, center, size, MATERIAL_COLORS["grass_mid"], "continuous_grass_base")
 
 
@@ -2028,6 +2033,8 @@ func _force_player_tile(tile: Vector2i) -> void:
 	moving = false
 	path_tiles = []
 	state_ref["player"] = {"tile": [tile.x, tile.y], "position": [tile.x + 0.5, tile.y + 0.5]}
+	if state_bound:
+		persistent_state_changed.emit()
 
 
 func _debug_open_tile_near_player(require_empty_object: bool = true) -> Vector2i:

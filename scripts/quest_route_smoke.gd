@@ -6,14 +6,16 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var watchdog := create_timer(4.0)
+	var watchdog := create_timer(6.0)
 	watchdog.timeout.connect(func() -> void:
-		push_error("Hearthvale economy and quest smoke timed out.")
+		push_error("Hearthvale quest route smoke timed out.")
 		quit(1)
 	)
 
 	var store = preload("res://autoload/state_store.gd").new()
-	var state: Dictionary = store.create_default_state("codex_economy_quest_smoke")
+	store.save_dir = "res://.godot_smoke_saves"
+	var username := "codex_quest_route_%d" % Time.get_ticks_usec()
+	var state: Dictionary = store.create_default_state(username)
 	var world = preload("res://scenes/world.tscn").instantiate()
 	var hud = preload("res://scenes/hud.tscn").instantiate()
 	var gameplay = preload("res://scripts/test_support/gameplay_smoke_harness.gd").new()
@@ -24,11 +26,11 @@ func _run() -> void:
 	hud.bind_state(state)
 	world.initialize_from_state(state)
 	gameplay.setup(state, world, hud, "manual")
-	var passed: bool = gameplay.run_economy_quest_smoke()
+	var passed: bool = gameplay.run_quest_route_smoke(store, username)
 	store.free()
 	if passed:
-		print("Hearthvale economy and quest smoke passed.")
+		print("Hearthvale quest route smoke passed.")
 		quit(0)
 	else:
-		push_error("Hearthvale economy and quest smoke failed.")
+		push_error("Hearthvale quest route smoke failed.")
 		quit(1)

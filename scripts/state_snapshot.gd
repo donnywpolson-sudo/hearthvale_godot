@@ -108,8 +108,6 @@ static func _quests_summary(state: Dictionary) -> Dictionary:
 	var quest_states = {}
 	if quest_root is Dictionary:
 		quest_states = quest_root.get("quests", {})
-	if not (quest_states is Dictionary) or quest_states.is_empty():
-		quest_states = state.get("quest_progress", {})
 	if quest_states is Dictionary:
 		for quest_id in quest_states.keys():
 			var quest_state = quest_states[quest_id]

@@ -14,18 +14,18 @@ func _run() -> void:
 
 	var store = preload("res://autoload/state_store.gd").new()
 	store.save_dir = "res://.godot_smoke_saves"
-	var username := "codex_golden_scenarios_smoke"
+	var username := "codex_golden_scenarios_%d" % Time.get_ticks_usec()
 	var state: Dictionary = store.create_default_state(username)
 	var world = preload("res://scenes/world.tscn").instantiate()
 	var hud = preload("res://scenes/hud.tscn").instantiate()
-	var gameplay = preload("res://scripts/gameplay_core.gd").new()
+	var gameplay = preload("res://scripts/test_support/gameplay_smoke_harness.gd").new()
 	root.add_child(world)
 	root.add_child(hud)
 	root.add_child(gameplay)
 	await process_frame
 	hud.bind_state(state)
 	world.initialize_from_state(state)
-	gameplay.setup(state, world, hud)
+	gameplay.setup(state, world, hud, "manual")
 	var passed: bool = gameplay.run_golden_scenarios_smoke()
 	passed = passed and _assert_save_round_trip(store, username, state)
 	store.free()
@@ -38,6 +38,8 @@ func _run() -> void:
 
 
 func _assert_save_round_trip(store: Node, username: String, state: Dictionary) -> bool:
+	state["username"] = username
+	state["account"] = {"username": username, "key": username.to_lower(), "created_at": Time.get_datetime_string_from_system(true), "last_login_at": null}
 	var expected := state.duplicate(true)
 	if not store.save_state(username, state):
 		push_error("Golden scenarios smoke save round-trip failed: save_state returned false")
@@ -46,7 +48,7 @@ func _assert_save_round_trip(store: Node, username: String, state: Dictionary) -
 	if loaded.is_empty():
 		push_error("Golden scenarios smoke save round-trip failed: load_state returned empty")
 		return false
-	for key in ["inventory", "bank", "equipment", "skills", "combat", "world", "quest_state", "quest_progress"]:
+	for key in ["inventory", "bank", "equipment", "skills", "combat", "world", "quest_state"]:
 		if _normalize_for_compare(loaded.get(key, {})) != _normalize_for_compare(expected.get(key, {})):
 			push_error("Golden scenarios smoke save round-trip failed: %s mismatch" % key)
 			return false

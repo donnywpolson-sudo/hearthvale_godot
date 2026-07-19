@@ -1,13 +1,15 @@
 # Economy And Quest Parity
 
-Step 8 ports the minimal economy and quest layer needed for playable Godot progression.
+The Godot economy and quest layer now provides functional bank, shop, and NPC
+dialogue panels around the canonical Godot v2 save format, with explicit transaction and
+quest-flow smoke coverage.
 
 ## Implemented
 
 - Bank station interaction that deposits one inventory stack, or withdraws one bank stack when nothing can be deposited.
 - Shop station interaction that buys the first affordable stock item, or sells one sellable inventory stack when no purchase can be made.
 - NPC interaction that starts, advances, completes, and repeats data-defined quests from `data/quests.json`.
-- Quest state storage using the reset Godot save format under `quest_state` plus a `quest_progress` mirror for UI display.
+- Quest state storage uses only canonical `quest_state.active_quest_id` and `quest_state.quests`; legacy mirrors are removed during v1 migration.
 - Quest reward application for item rewards and skill XP rewards.
 - Quest progress flags from bank use, shop use, gathering, cooking, smelting, smithing, carpentry, herbalism, combat kills, and minimal weapon equip.
 - HUD Quest tab showing active, started, available, and completed quest objective text.
@@ -26,11 +28,15 @@ Matched intentionally:
 
 Intentional parity deltas:
 
-- Godot Step 8 has no bank or shop transaction dialog yet; clicking a station performs the first valid minimal transaction.
+- Bank and shop panels expose deposit, withdraw, buy, and sell rows. Quantity
+  text entry, multi-buy, and stock depletion remain future work.
 - Bank withdraw respects inventory slot capacity, but deposit has no bank capacity limit because the Python bank has no separate bank capacity.
 - Shop stock is not depleted and quantities are fixed to one item per click.
-- Quest reward capacity checks use the Godot shell inventory model and do not yet expose a recovery dialog.
-- NPC dialogue is shown through HUD feedback only; full dialogue panels and choice UI remain future polish.
+- Quest reward capacity checks block safely and can recover after inventory space
+  is restored; a dedicated recovery dialog and richer branching remain future
+  work.
+- NPC dialogue uses a functional HUD panel; branching choices and richer history
+  remain future polish.
 - Quest progress notifications are stored and visible in the Quest tab, but not yet appended to every action feedback string.
 - Equipment is still minimal; Step 8 only adds a weapon equip helper needed for quest reward smoke coverage.
 

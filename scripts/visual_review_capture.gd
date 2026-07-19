@@ -223,7 +223,7 @@ func _create_fixture(username: String) -> Dictionary:
 	await process_frame
 	hud.bind_state(state)
 	world.initialize_from_state(state)
-	gameplay.setup(state, world, hud)
+	gameplay.setup(state, world, hud, "manual")
 	if world.has_signal("selection_changed"):
 		world.selection_changed.connect(hud.set_selection)
 	if world.has_signal("hover_changed"):
@@ -274,7 +274,6 @@ func _seed_visual_state(state: Dictionary) -> void:
 			"trail_supplies": {"started": true, "completed": false, "flags": ["gathered_wood"]},
 		},
 	}
-	state["quest_progress"] = {}
 	state["combat"] = {"current_hitpoints": 8, "mobs": {}, "ground_items": [], "status_effects": {}}
 
 

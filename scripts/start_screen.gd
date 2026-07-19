@@ -4,6 +4,7 @@ signal start_requested(username: String)
 
 @onready var name_edit: LineEdit = $Panel/Margin/Stack/NameEdit
 @onready var start_button: Button = $Panel/Margin/Stack/StartButton
+@onready var error_label: Label = $Panel/Margin/Stack/ErrorLabel
 
 var _time := 0.0
 
@@ -37,11 +38,17 @@ func _draw() -> void:
 
 
 func _request_start() -> void:
+	error_label.text = ""
 	start_requested.emit(name_edit.text)
 
 
 func _on_name_submitted(_text: String) -> void:
 	_request_start()
+
+
+func show_error(message: String) -> void:
+	error_label.text = message
+	name_edit.grab_focus()
 
 
 func _draw_sky() -> void:

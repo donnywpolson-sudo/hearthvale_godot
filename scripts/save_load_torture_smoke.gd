@@ -14,18 +14,18 @@ func _run() -> void:
 
 	var store = preload("res://autoload/state_store.gd").new()
 	store.save_dir = "res://.godot_smoke_saves"
-	var username := "codex_save_load_torture_smoke"
+	var username := "codex_save_load_torture_%d" % Time.get_ticks_usec()
 	var state: Dictionary = store.create_default_state(username)
 	var world = preload("res://scenes/world.tscn").instantiate()
 	var hud = preload("res://scenes/hud.tscn").instantiate()
-	var gameplay = preload("res://scripts/gameplay_core.gd").new()
+	var gameplay = preload("res://scripts/test_support/gameplay_smoke_harness.gd").new()
 	root.add_child(world)
 	root.add_child(hud)
 	root.add_child(gameplay)
 	await process_frame
 	hud.bind_state(state)
 	world.initialize_from_state(state)
-	gameplay.setup(state, world, hud)
+	gameplay.setup(state, world, hud, "manual")
 	var passed: bool = gameplay.run_save_load_torture_smoke(store, username)
 	store.free()
 	if passed:

@@ -152,6 +152,13 @@ text = "local_player"
 placeholder_text = "Adventurer name"
 select_all_on_focus = false
 
+[node name="ErrorLabel" type="Label" parent="Panel/Margin/Stack"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.48, 0.4, 1)
+text = ""
+autowrap_mode = 2
+horizontal_alignment = 1
+
 [node name="StartButton" type="Button" parent="Panel/Margin/Stack"]
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2

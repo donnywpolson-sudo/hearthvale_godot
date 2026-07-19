@@ -4,9 +4,12 @@ signal bank_deposit_requested(item_id: String, quantity: int)
 signal bank_withdraw_requested(item_id: String, quantity: int)
 signal shop_buy_requested(item_id: String, price: int)
 signal shop_sell_requested(item_id: String, quantity: int)
+signal quest_route_select_requested(quest_id: String)
 signal dialogue_action_requested(npc_data: Dictionary)
 signal inventory_item_action_requested(item_id: String, action: String)
 signal equipment_item_action_requested(slot: String, action: String)
+signal carpentry_specialization_requested(specialization: String)
+signal recipe_selected_requested(action_type: String, recipe_id: String)
 signal compass_reset_requested
 
 const ITEMS_PATH := "res://data/items.json"
@@ -15,6 +18,17 @@ const QUESTS_PATH := "res://data/quests.json"
 const FALLBACK_ICON_PATH := "res://assets/icons/ui/missing.png"
 const ItemTooltipButton := preload("res://scripts/item_tooltip_button.gd")
 const MinimapControl := preload("res://scripts/minimap_control.gd")
+const AUDIO_PATHS := {
+	"ambient": "res://assets/audio/ambient.wav",
+	"coin_jingle": "res://assets/audio/coin_jingle.wav",
+	"combat_hit": "res://assets/audio/combat_hit.wav",
+	"combat_miss": "res://assets/audio/combat_miss.wav",
+	"craft_shimmer": "res://assets/audio/craft_shimmer.wav",
+	"gather_thud": "res://assets/audio/gather_thud.wav",
+	"level_up": "res://assets/audio/level_up.wav",
+	"quest_complete": "res://assets/audio/quest_complete.wav",
+	"ui_click": "res://assets/audio/ui_click.wav",
+}
 const INVENTORY_SLOT_LIMIT := 28
 const INVENTORY_GRID_COLUMNS := 4
 const INVENTORY_COMPACT_EMPTY_SLOT_FLOOR := 12
@@ -89,6 +103,7 @@ var current_state := {}
 var active_tab := "inventory"
 var chat_messages: Array[String] = []
 var tab_buttons: Dictionary = {}
+var tab_row: HBoxContainer
 var item_icon_cache: Dictionary = {}
 var panel: PanelContainer
 var panel_title: Label
@@ -104,6 +119,9 @@ var compass_button: Button
 var active_shop_data := {}
 var active_dialogue_npc := {}
 var simulation_lightweight_mode := false
+var audio_streams := {}
+var ambient_player: AudioStreamPlayer
+var effect_player: AudioStreamPlayer
 
 
 func _ready() -> void:
@@ -114,8 +132,13 @@ func _ready() -> void:
 	_build_interaction_panel()
 	_build_hover_hint()
 	_build_minimap()
+	_setup_audio()
+	get_tree().node_added.connect(_on_hud_node_added)
+	_wire_button_tree(root_control)
 	root_control.resized.connect(_update_right_panel_layout)
+	root_control.resized.connect(_update_interaction_panel_layout)
 	_update_right_panel_layout()
+	_update_interaction_panel_layout()
 
 
 func set_simulation_lightweight_mode(enabled: bool) -> void:
@@ -124,6 +147,10 @@ func set_simulation_lightweight_mode(enabled: bool) -> void:
 		_clear_interaction_body()
 		if panel_body != null:
 			_clear_container_children(panel_body)
+
+
+func is_simulation_lightweight_mode() -> bool:
+	return simulation_lightweight_mode
 
 
 func set_account(username: String) -> void:
@@ -172,6 +199,76 @@ func set_feedback(message: String) -> void:
 		_refresh_state_panel()
 
 
+func _setup_audio() -> void:
+	for cue in AUDIO_PATHS.keys():
+		var stream = load(str(AUDIO_PATHS[cue]))
+		if stream is AudioStream:
+			audio_streams[str(cue)] = stream
+	ambient_player = AudioStreamPlayer.new()
+	ambient_player.name = "AmbientAudio"
+	ambient_player.volume_db = -20.0
+	if audio_streams.has("ambient"):
+		ambient_player.stream = audio_streams["ambient"]
+		if ambient_player.stream is AudioStreamWAV:
+			ambient_player.stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		add_child(ambient_player)
+	ambient_player.play()
+	effect_player = AudioStreamPlayer.new()
+	effect_player.name = "FeedbackAudio"
+	effect_player.volume_db = -4.0
+	add_child(effect_player)
+
+
+func _on_hud_node_added(node: Node) -> void:
+	if root_control != null and root_control.is_ancestor_of(node):
+		_wire_button_tree(node)
+
+
+func _wire_button_tree(node: Node) -> void:
+	if node is BaseButton:
+		var callback := Callable(self, "_on_ui_button_pressed")
+		if not node.pressed.is_connected(callback):
+			node.pressed.connect(callback)
+	for child in node.get_children():
+		_wire_button_tree(child)
+
+
+func _on_ui_button_pressed() -> void:
+	# Action/UI sounds are intentionally disabled. Ambient audio remains available.
+	return
+
+
+func audio_assets_loaded() -> bool:
+	for cue in AUDIO_PATHS.keys():
+		if not audio_streams.has(str(cue)):
+			return false
+	return true
+
+
+func _play_feedback_cue(message: String) -> void:
+	# Retained as a compatibility hook for callers; gameplay feedback is silent.
+	return
+
+
+func _feedback_cue(message: String) -> String:
+	var lower := message.to_lower()
+	if lower.contains("quest complete"):
+		return "quest_complete"
+	if lower.contains(" level ") or lower.ends_with(" level"):
+		return "level_up"
+	if lower.begins_with("hit ") or lower.contains("defeated "):
+		return "combat_hit"
+	if lower.contains("too wounded") or lower.contains("miss"):
+		return "combat_miss"
+	if lower.contains("bought ") or lower.contains("sold ") or lower.contains("coins"):
+		return "coin_jingle"
+	if lower.contains(" -> ") or lower.contains("crafted") or lower.contains("made "):
+		return "craft_shimmer"
+	if lower.contains(" xp") and not lower.contains("inventory is full"):
+		return "gather_thud"
+	return ""
+
+
 func bind_state(state: Dictionary) -> void:
 	current_state = state
 	_refresh_top_bar_from_state()
@@ -190,76 +287,6 @@ func select_tab(tab_id: String) -> void:
 	for key in tab_buttons.keys():
 		tab_buttons[key].disabled = key == active_tab
 	_refresh_state_panel()
-
-
-func run_ui_state_smoke() -> bool:
-	if current_state.is_empty():
-		return false
-	for tab_id in ["inventory", "equipment", "skills", "quests", "state"]:
-		select_tab(tab_id)
-		if panel_body.get_child_count() == 0:
-			return false
-	select_tab("skills")
-	var skill_ids := _panel_skill_ids_for_smoke()
-	var magic_index := skill_ids.find("magic")
-	var woodcutting_index := skill_ids.find("woodcutting")
-	if skill_ids.is_empty() or skill_ids[0] != "attack" or magic_index == -1 or woodcutting_index == -1 or magic_index > woodcutting_index:
-		return false
-	if not _panel_contains_skill_icon("attack") or not _panel_contains_skill_icon("hitpoints"):
-		return false
-	select_tab("quests")
-	if not _panel_contains_button("Starter path") or not _panel_contains_button("Trail supplies"):
-		return false
-	if _item_icon_texture("logs") == null:
-		return false
-	if not _item_tooltip("logs", 3).contains("Category: wood"):
-		return false
-	show_item_action_panel("logs")
-	if interaction_title.text != "Logs" or interaction_body.get_child_count() == 0 or not _interaction_contains_button("Drop 1"):
-		return false
-	hide_interaction_panel()
-	set_hover_target("Tree (Woodcutting)")
-	if not hover_hint_is_visible() or hover_hint_text() != "Tree (Woodcutting)":
-		return false
-	set_hover_target("")
-	if hover_hint_is_visible():
-		return false
-	configure_minimap({"width": 100, "height": 100, "dirt_tiles": [[15, 15]], "water_tiles": [], "blocked_tiles": [], "objects": [{"tile": [16, 15], "type": "resource", "label": "Tree"}]})
-	set_minimap_player_tile(Vector2i(15, 15))
-	set_minimap_heading(42.0)
-	if not minimap_has_data_for_smoke() or minimap_player_tile_for_smoke() != Vector2i(15, 15) or absf(minimap_heading_for_smoke() - 42.0) > 0.1 or not minimap_player_is_centered_for_smoke():
-		return false
-	var snapshot := current_state.duplicate(true)
-	current_state["equipment"] = {"weapon": "bronze_sword"}
-	select_tab("equipment")
-	var bronze_sword_name := _item_name("bronze_sword")
-	var equipment_panel_ok := panel_title.text == "Equipment" and _panel_contains_button(bronze_sword_name)
-	show_equipment_action_panel("weapon")
-	var equipment_action_ok := interaction_title.text == "Weapon: %s" % bronze_sword_name and _interaction_contains_button("Unequip") and _item_tooltip("bronze_sword").contains("Attack +1")
-	current_state.clear()
-	for key in snapshot.keys():
-		current_state[key] = snapshot[key]
-	if not equipment_panel_ok or not equipment_action_ok:
-		return false
-	hide_interaction_panel()
-	select_tab("inventory")
-	return account_label.text.contains(str(current_state.get("username", ""))) and panel_title.text == "Inventory"
-
-
-func run_interaction_panel_smoke() -> bool:
-	if current_state.is_empty():
-		return false
-	show_bank_panel()
-	if interaction_title.text != "Bank" or interaction_body.get_child_count() == 0:
-		return false
-	show_shop_panel({"name": "General Store", "stock": [{"item_id": "trail_ration", "price": 3}]})
-	if interaction_title.text != "General Store" or interaction_body.get_child_count() == 0:
-		return false
-	show_dialogue_panel({"name": "Guide", "quest_id": "starter_path"}, {"display_name": "Starter path"}, {}, "Guide: Welcome.", "Start")
-	if interaction_title.text != "Guide" or interaction_body.get_child_count() == 0:
-		return false
-	hide_interaction_panel()
-	return not interaction_panel.visible
 
 
 func _build_state_panel() -> void:
@@ -295,14 +322,13 @@ func _build_state_panel() -> void:
 	panel_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stack.add_child(panel_title)
 
-	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 6)
-	stack.add_child(tabs)
-	_add_tab_button(tabs, "inventory", "Inv")
-	_add_tab_button(tabs, "equipment", "Gear")
-	_add_tab_button(tabs, "skills", "Skills")
-	_add_tab_button(tabs, "quests", "Quest")
-	_add_tab_button(tabs, "state", "State")
+	tab_row = HBoxContainer.new()
+	stack.add_child(tab_row)
+	_add_tab_button(tab_row, "inventory", "Inv")
+	_add_tab_button(tab_row, "equipment", "Gear")
+	_add_tab_button(tab_row, "skills", "Skills")
+	_add_tab_button(tab_row, "quests", "Quest")
+	_add_tab_button(tab_row, "state", "State")
 
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(246, 0)
@@ -345,6 +371,7 @@ func _build_interaction_panel() -> void:
 
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation", 8)
+	stack.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_child(stack)
 
 	var header := HBoxContainer.new()
@@ -363,6 +390,7 @@ func _build_interaction_panel() -> void:
 
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(458, 360)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	stack.add_child(scroll)
 
@@ -456,6 +484,7 @@ func _update_right_panel_layout() -> void:
 	var viewport_height := root_control.size.y
 	var compact := viewport_height <= RIGHT_PANEL_COMPACT_VIEWPORT_HEIGHT
 	_update_minimap_layout(compact)
+	_update_tab_row_layout(compact)
 	var min_top := RIGHT_PANEL_COMPACT_MIN_TOP if compact else RIGHT_PANEL_MIN_TOP
 	var bottom_margin := 24.0 if compact else 16.0
 	var target_top := maxf(min_top, viewport_height - RIGHT_PANEL_BASE_HEIGHT - bottom_margin)
@@ -463,6 +492,22 @@ func _update_right_panel_layout() -> void:
 	panel.offset_right = -RIGHT_PANEL_RIGHT_MARGIN
 	panel.offset_top = target_top - viewport_height
 	panel.offset_bottom = -bottom_margin
+
+
+func _update_interaction_panel_layout() -> void:
+	if interaction_panel == null or root_control == null:
+		return
+	var compact := root_control.size.y <= RIGHT_PANEL_COMPACT_VIEWPORT_HEIGHT
+	interaction_panel.offset_bottom = -50.0 if compact else -74.0
+
+
+func _update_tab_row_layout(compact: bool) -> void:
+	if tab_row == null:
+		return
+	tab_row.add_theme_constant_override("separation", 2 if compact else 6)
+	var font_size := 12 if compact else 14
+	for button in tab_buttons.values():
+		button.add_theme_font_size_override("font_size", font_size)
 
 
 func _update_minimap_layout(compact: bool) -> void:
@@ -498,6 +543,80 @@ func _show_interaction_panel() -> void:
 		interaction_panel.visible = true
 	if panel != null:
 		panel.visible = false
+
+
+func show_recipe_picker(action_type: String, station_label: String, entries: Array) -> void:
+	_clear_interaction_body()
+	interaction_title.text = station_label
+	_show_interaction_panel()
+	if simulation_lightweight_mode:
+		return
+	if entries.is_empty():
+		_add_interaction_muted("No recipes available")
+		return
+	for entry in entries:
+		if entry is Dictionary:
+			_add_recipe_picker_row(action_type, entry)
+
+
+func _add_recipe_picker_row(action_type: String, entry: Dictionary) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.custom_minimum_size = Vector2(0, 44)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	interaction_body.add_child(row)
+
+	var text_stack := VBoxContainer.new()
+	text_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text_stack.add_theme_constant_override("separation", 0)
+	row.add_child(text_stack)
+	var name_label := Label.new()
+	name_label.text = str(entry.get("display_name", entry.get("recipe_id", "Recipe")))
+	name_label.clip_text = true
+	name_label.add_theme_font_size_override("font_size", 13)
+	text_stack.add_child(name_label)
+	var details_label := Label.new()
+	details_label.text = "Lv %d  ·  %s  →  %s  ·  %d XP" % [
+		int(entry.get("required_level", 1)),
+		_recipe_picker_inputs_text(entry.get("inputs", {})),
+		_recipe_picker_output_text(entry),
+		int(entry.get("xp_reward", 0)),
+	]
+	details_label.modulate = Color(0.72, 0.72, 0.72, 1.0)
+	details_label.add_theme_font_size_override("font_size", 10)
+	details_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text_stack.add_child(details_label)
+	if not bool(entry.get("eligible", false)):
+		var availability_label := Label.new()
+		availability_label.text = str(entry.get("availability", "Unavailable"))
+		availability_label.modulate = Color(0.86, 0.65, 0.42, 1.0)
+		availability_label.add_theme_font_size_override("font_size", 10)
+		availability_label.clip_text = true
+		text_stack.add_child(availability_label)
+	var craft_button := Button.new()
+	craft_button.text = "Craft"
+	craft_button.custom_minimum_size = Vector2(72, 28)
+	craft_button.add_theme_font_size_override("font_size", 11)
+	craft_button.disabled = not bool(entry.get("eligible", false))
+	var selected_recipe_id := str(entry.get("recipe_id", ""))
+	craft_button.pressed.connect(func() -> void:
+		recipe_selected_requested.emit(action_type, selected_recipe_id)
+	)
+	row.add_child(craft_button)
+
+
+func _recipe_picker_inputs_text(raw_inputs) -> String:
+	if not (raw_inputs is Dictionary) or raw_inputs.is_empty():
+		return "No inputs"
+	var parts: Array[String] = []
+	for item_id in raw_inputs.keys():
+		var quantity := int(raw_inputs[item_id])
+		parts.append("%s ×%d" % [_item_name(str(item_id)), quantity])
+	return ", ".join(parts)
+
+
+func _recipe_picker_output_text(entry: Dictionary) -> String:
+	return "%s ×%d" % [_item_name(str(entry.get("output_item_id", ""))), int(entry.get("output_quantity", 1))]
 
 
 func hover_hint_is_visible() -> bool:
@@ -1317,6 +1436,38 @@ func _render_skills_panel() -> void:
 	if rendered_count == 0:
 		grid.queue_free()
 		_add_muted_label("No skills available")
+	else:
+		_render_carpentry_specialization_panel(skills)
+
+
+func _render_carpentry_specialization_panel(skills: Dictionary) -> void:
+	var carpentry_values = skills.get("carpentry", {})
+	if not (carpentry_values is Dictionary) or int(carpentry_values.get("level", 1)) < 40:
+		return
+	var specialization := str(current_state.get("carpentry_specialization", "")).to_lower()
+	_add_section_label("Carpentry specialization")
+	if specialization == "weaponwright":
+		_add_muted_label("Weaponwright: 15% chance to return 1 plain tool handle from selected weapon crafts.")
+		return
+	if specialization == "fieldwright":
+		_add_muted_label("Fieldwright: 15% chance to return 1 plain plank from selected utility crafts.")
+		return
+	_add_muted_label("Choose once at level 40. This specialization is permanent.")
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	panel_body.add_child(row)
+	var weapon_button := Button.new()
+	weapon_button.text = "Weaponwright\nTool-handle recovery"
+	weapon_button.tooltip_text = "15% chance to return 1 plain tool handle from selected bow and staff crafts."
+	weapon_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	weapon_button.pressed.connect(func() -> void: carpentry_specialization_requested.emit("weaponwright"))
+	row.add_child(weapon_button)
+	var field_button := Button.new()
+	field_button.text = "Fieldwright\nPlank recovery"
+	field_button.tooltip_text = "15% chance to return 1 plain plank from selected utility crafts."
+	field_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	field_button.pressed.connect(func() -> void: carpentry_specialization_requested.emit("fieldwright"))
+	row.add_child(field_button)
 
 
 func _render_quests_panel() -> void:
@@ -1332,7 +1483,7 @@ func _render_quests_panel() -> void:
 	var shown := {}
 	if definitions.has(active_quest_id):
 		_add_section_label("Active")
-		_add_quest_row(active_quest_id, definitions[active_quest_id], quest_states.get(active_quest_id, {}))
+		_add_quest_row(active_quest_id, definitions[active_quest_id], quest_states.get(active_quest_id, {}), true)
 		shown[active_quest_id] = true
 	_add_section_label("Started")
 	var started_ids: Array[String] = []
@@ -1345,7 +1496,7 @@ func _render_quests_panel() -> void:
 			started_ids.append(clean_id)
 	started_ids.sort_custom(func(left: String, right: String) -> bool: return _quest_title(left, definitions) < _quest_title(right, definitions))
 	for quest_id in started_ids:
-		_add_quest_row(quest_id, definitions[quest_id], quest_states.get(quest_id, {}))
+		_add_quest_row(quest_id, definitions[quest_id], quest_states.get(quest_id, {}), false)
 		shown[quest_id] = true
 	if started_ids.is_empty() and not quest_states.has(active_quest_id):
 		_add_muted_label("No started quests")
@@ -1358,17 +1509,19 @@ func _render_quests_panel() -> void:
 		available_ids.append(clean_id)
 	available_ids.sort_custom(func(left: String, right: String) -> bool: return _quest_title(left, definitions) < _quest_title(right, definitions))
 	for quest_id in available_ids:
-		_add_quest_row(quest_id, definitions[quest_id], {})
+		_add_quest_row(quest_id, definitions[quest_id], {}, false)
 	if available_ids.is_empty():
 		_add_muted_label("All quests have been started")
 
 
 func _add_skill_tile(parent: GridContainer, skill_id: String, values: Dictionary) -> void:
 	var tile := PanelContainer.new()
-	tile.custom_minimum_size = Vector2(119, 46)
+	tile.custom_minimum_size = Vector2(119, 60)
 	tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tile.set_meta("skill_id", skill_id)
 	tile.set_meta("skill_icon_loaded", _skill_icon_path(skill_id) != FALLBACK_ICON_PATH)
+	var current_level := int(values.get("level", 1))
+	tile.tooltip_text = _skill_mastery_tooltip(skill_id, current_level)
 	tile.add_theme_stylebox_override("panel", _skill_tile_style(skill_id))
 	parent.add_child(tile)
 
@@ -1405,14 +1558,61 @@ func _add_skill_tile(parent: GridContainer, skill_id: String, values: Dictionary
 	detail_label.add_theme_font_size_override("font_size", 10)
 	text_stack.add_child(detail_label)
 
+	var mastery_label := Label.new()
+	mastery_label.text = _skill_mastery_status(skill_id, current_level)
+	mastery_label.modulate = Color(0.86, 0.72, 0.40, 1.0)
+	mastery_label.clip_text = true
+	mastery_label.add_theme_font_size_override("font_size", 9)
+	text_stack.add_child(mastery_label)
 
-func _add_quest_row(quest_id: String, definition: Dictionary, quest_state) -> void:
+
+func _skill_mastery_status(skill_id: String, current_level: int) -> String:
+	var definition = skills_data.get(skill_id, {})
+	if not (definition is Dictionary):
+		return "Mastery unavailable"
+	var perks = definition.get("mastery_perks", [])
+	if not (perks is Array) or perks.is_empty():
+		return "No mastery perks"
+	var unlocked := 0
+	var next_level := 0
+	for perk in perks:
+		if not (perk is Dictionary):
+			continue
+		var level := int(perk.get("level", 0))
+		if level <= current_level:
+			unlocked += 1
+		elif next_level == 0 or level < next_level:
+			next_level = level
+	if next_level > 0:
+		return "Mastery %d/%d  Next %d" % [unlocked, perks.size(), next_level]
+	return "Mastery %d/%d  Complete" % [unlocked, perks.size()]
+
+
+func _skill_mastery_tooltip(skill_id: String, current_level: int) -> String:
+	var definition = skills_data.get(skill_id, {})
+	if not (definition is Dictionary):
+		return ""
+	var lines: Array[String] = []
+	var role := str(definition.get("role", ""))
+	if not role.is_empty():
+		lines.append(role)
+	var perks = definition.get("mastery_perks", [])
+	if perks is Array:
+		for perk in perks:
+			if perk is Dictionary:
+				var prefix := "Unlocked" if int(perk.get("level", 0)) <= current_level else "Level %d"
+				lines.append("%s: %s" % [prefix, str(perk.get("label", "Mastery perk"))])
+	return "\n".join(lines)
+
+
+func _add_quest_row(quest_id: String, definition: Dictionary, quest_state, is_active: bool = false) -> void:
 	var state: Dictionary = quest_state if quest_state is Dictionary else {}
 	var title := str(definition.get("display_name", _display_label(quest_id)))
-	var status := _quest_status_text(state)
+	var ready_to_return := _quest_is_ready_to_return(definition, state)
+	var status := _quest_status_text(state, is_active, ready_to_return)
 	var compact := _right_panel_uses_compact_layout()
 	var row_panel := PanelContainer.new()
-	row_panel.custom_minimum_size = Vector2(0, 46 if compact else 54)
+	row_panel.custom_minimum_size = Vector2(0, 70 if compact else 80)
 	row_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row_panel.add_theme_stylebox_override("panel", _quest_row_style(status))
 	panel_body.add_child(row_panel)
@@ -1468,6 +1668,22 @@ func _add_quest_row(quest_id: String, definition: Dictionary, quest_state) -> vo
 	objective_label.add_theme_font_size_override("font_size", 10)
 	text_stack.add_child(objective_label)
 
+	var reward_label := Label.new()
+	reward_label.text = _quest_reward_preview(definition)
+	reward_label.modulate = Color(0.82, 0.72, 0.46, 1.0)
+	reward_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	reward_label.add_theme_font_size_override("font_size", 9)
+	text_stack.add_child(reward_label)
+
+	if bool(state.get("started", false)) and not bool(state.get("completed", false)) and not is_active:
+		var track_button := Button.new()
+		track_button.text = "Track"
+		track_button.tooltip_text = "Track this quest"
+		track_button.custom_minimum_size = Vector2(54 if compact else 64, 28)
+		track_button.add_theme_font_size_override("font_size", 10)
+		track_button.pressed.connect(func() -> void: quest_route_select_requested.emit(quest_id))
+		row.add_child(track_button)
+
 
 func _skill_tile_style(skill_id: String) -> StyleBoxFlat:
 	var accent := _skill_color(skill_id)
@@ -1507,8 +1723,12 @@ func _quest_status_color(status: String) -> Color:
 	match status:
 		"Complete":
 			return Color(0.52, 0.80, 0.58, 1.0)
+		"Ready to return":
+			return Color(0.96, 0.72, 0.30, 1.0)
 		"Active":
 			return Color(0.98, 0.82, 0.34, 1.0)
+		"Started":
+			return Color(0.64, 0.72, 0.86, 1.0)
 	return Color(0.60, 0.62, 0.56, 1.0)
 
 
@@ -1599,12 +1819,55 @@ func _quest_title(quest_id: String, definitions: Dictionary) -> String:
 	return _display_label(quest_id)
 
 
-func _quest_status_text(state: Dictionary) -> String:
+func _quest_status_text(state: Dictionary, is_active: bool = false, ready_to_return: bool = false) -> String:
 	if bool(state.get("completed", false)):
 		return "Complete"
-	if bool(state.get("started", false)):
+	if ready_to_return:
+		return "Ready to return"
+	if is_active and bool(state.get("started", false)):
 		return "Active"
-	return "Not started"
+	if bool(state.get("started", false)):
+		return "Started"
+	return "Available"
+
+
+func _quest_is_ready_to_return(definition: Dictionary, state: Dictionary) -> bool:
+	if not bool(state.get("started", false)) or bool(state.get("completed", false)):
+		return false
+	var missing := []
+	var flags = state.get("flags", [])
+	if not (flags is Array):
+		flags = []
+	var objectives = definition.get("objectives", [])
+	if not (objectives is Array):
+		return false
+	for objective in objectives:
+		if objective is Dictionary and not flags.has(str(objective.get("flag", ""))):
+			missing.append(objective)
+	return missing.is_empty()
+
+
+func _quest_reward_preview(definition: Dictionary) -> String:
+	var rewards: Array[String] = []
+	var item_rewards = definition.get("item_rewards", [])
+	if item_rewards is Array:
+		for reward in item_rewards:
+			if reward is Dictionary:
+				var item_id := str(reward.get("item_id", ""))
+				var quantity := int(reward.get("quantity", 1))
+				if not item_id.is_empty() and quantity > 0:
+					rewards.append("%s x%d" % [_item_name(item_id), quantity])
+	var skill_rewards = definition.get("skill_rewards", [])
+	if skill_rewards is Array:
+		for reward in skill_rewards:
+			if reward is Dictionary:
+				var skill_id := str(reward.get("skill_id", ""))
+				var xp := int(reward.get("xp", 0))
+				if not skill_id.is_empty() and xp > 0:
+					rewards.append("%s XP +%d" % [_skill_name(skill_id), xp])
+	if rewards.is_empty():
+		return "Reward: none"
+	return "Reward: %s" % "; ".join(rewards)
 
 
 func _quest_state_has_progress(state: Dictionary) -> bool:
@@ -1625,9 +1888,6 @@ func _quest_root() -> Dictionary:
 	var root = current_state.get("quest_state", {})
 	if root is Dictionary and root.has("quests"):
 		return root
-	var legacy = current_state.get("quest_progress", {})
-	if legacy is Dictionary:
-		return {"active_quest_id": "starter_path", "quests": legacy}
 	return {"active_quest_id": "starter_path", "quests": {}}
 
 
@@ -1908,6 +2168,25 @@ func _panel_contains_button(text: String) -> bool:
 	return false
 
 
+func _panel_button_for_smoke(text: String) -> Button:
+	if panel_body == null:
+		return null
+	for child in panel_body.get_children():
+		var button := _control_tree_find_button_text(child, text)
+		if button != null:
+			return button
+	return null
+
+
+func _panel_contains_text(text: String) -> bool:
+	if panel_body == null:
+		return false
+	for child in panel_body.get_children():
+		if _control_tree_contains_text(child, text):
+			return true
+	return false
+
+
 func _panel_skill_ids_for_smoke() -> Array[String]:
 	var ids: Array[String] = []
 	if panel_body == null:
@@ -1940,6 +2219,8 @@ func _control_tree_contains_skill_icon(node: Node, skill_id: String) -> bool:
 
 
 func _control_tree_contains_button_text(node: Node, text: String) -> bool:
+	if node.is_queued_for_deletion():
+		return false
 	if node is Button:
 		if node.text == text or node.tooltip_text == text:
 			return true
@@ -1949,6 +2230,31 @@ func _control_tree_contains_button_text(node: Node, text: String) -> bool:
 		return true
 	for child in node.get_children():
 		if _control_tree_contains_button_text(child, text):
+			return true
+	return false
+
+
+func _control_tree_find_button_text(node: Node, text: String) -> Button:
+	if node.is_queued_for_deletion():
+		return null
+	if node is Button and (node.text == text or node.tooltip_text == text):
+		return node
+	for child in node.get_children():
+		var button := _control_tree_find_button_text(child, text)
+		if button != null:
+			return button
+	return null
+
+
+func _control_tree_contains_text(node: Node, text: String) -> bool:
+	if node.is_queued_for_deletion():
+		return false
+	if node is Label and str(node.text).contains(text):
+		return true
+	if node is Button and (str(node.text).contains(text) or str(node.tooltip_text).contains(text)):
+		return true
+	for child in node.get_children():
+		if _control_tree_contains_text(child, text):
 			return true
 	return false
 

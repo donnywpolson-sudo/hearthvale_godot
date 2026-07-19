@@ -16,14 +16,14 @@ func _run() -> void:
 	var state: Dictionary = store.create_default_state("codex_timed_action_smoke")
 	var world = preload("res://scenes/world.tscn").instantiate()
 	var hud = preload("res://scenes/hud.tscn").instantiate()
-	var gameplay = preload("res://scripts/gameplay_core.gd").new()
+	var gameplay = preload("res://scripts/test_support/gameplay_smoke_harness.gd").new()
 	root.add_child(world)
 	root.add_child(hud)
 	root.add_child(gameplay)
 	await process_frame
 	hud.bind_state(state)
 	world.initialize_from_state(state)
-	gameplay.setup(state, world, hud)
+	gameplay.setup(state, world, hud, "manual")
 	var passed: bool = gameplay.run_timed_action_smoke()
 	store.free()
 	if passed:

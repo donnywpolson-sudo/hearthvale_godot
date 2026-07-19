@@ -11,7 +11,6 @@ func _init() -> void:
 	state["bank"] = {"bronze_sword": 1}
 	state["player"] = {"tile": Vector2i(18, 15), "position": [18.5, 15.5]}
 	state["quest_state"] = {"active_quest_id": "starter_path", "quests": {"starter_path": {"started": true, "completed": false, "flags": ["created_save"]}}}
-	state["quest_progress"] = state["quest_state"]["quests"].duplicate(true)
 	state["combat"] = {"current_hitpoints": 7, "mobs": {"debug_dummy": {"hitpoints": 3, "dead": false}}, "ground_items": [{"item_id": "bones", "quantity": 1}], "status_effects": {"poison": {"damage": 1, "rounds_remaining": 2}}}
 	state["world"] = {"resource_nodes": {"smoke_tree": {"depleted": true, "respawn_at": 12.0}}, "action_clock_seconds": 3.5, "weather": "rain"}
 

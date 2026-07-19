@@ -6,6 +6,7 @@ const DEFAULT_INVENTORY_SLOT_LIMIT := 28
 static func check_state(state: Dictionary, item_data: Dictionary = {}, options: Dictionary = {}) -> Array:
 	var issues := []
 	var slot_limit := int(options.get("inventory_slot_limit", DEFAULT_INVENTORY_SLOT_LIMIT))
+	_check_canonical_shape(state, issues)
 	_check_mapping_shape(state, "inventory", issues)
 	_check_mapping_shape(state, "bank", issues)
 	_check_stack_mapping(_dict(state.get("inventory", {})), "inventory", item_data, issues)
@@ -13,9 +14,27 @@ static func check_state(state: Dictionary, item_data: Dictionary = {}, options: 
 	_check_inventory_slots(_dict(state.get("inventory", {})), item_data, slot_limit, issues)
 	_check_skills(_dict(state.get("skills", {})), issues)
 	_check_combat(_dict(state.get("combat", {})), _dict(state.get("skills", {})), issues)
+	_check_ground_items(_dict(state.get("combat", {})), issues)
 	_check_quest_state(_dict(state.get("quest_state", {})), issues)
 	_check_world_state(_dict(state.get("world", {})), issues)
 	return issues
+
+
+static func _check_canonical_shape(state: Dictionary, issues: Array) -> void:
+	if str(state.get("schema", "")) != "hearthvale_godot_v2" or int(state.get("version", 0)) != 2:
+		issues.append(_issue("save_schema", "state", "State must use the canonical Hearthvale v2 save schema.", {}))
+	for key in ["combat", "quest_state", "time", "world"]:
+		if not state.get(key, null) is Dictionary:
+			issues.append(_issue("state_shape", key, "%s must be a dictionary." % key.capitalize(), {}))
+	if not state.get("active_effects", null) is Array:
+		issues.append(_issue("state_shape", "active_effects", "Active effects must be an array.", {}))
+	for legacy_key in ["quest_progress"]:
+		if state.has(legacy_key):
+			issues.append(_issue("legacy_state_mirror", legacy_key, "Legacy state mirrors must not be written.", {}))
+	var world_state := _dict(state.get("world", {}))
+	for legacy_key in ["combat", "quest_state", "active_effects", "day", "minute"]:
+		if world_state.has(legacy_key):
+			issues.append(_issue("legacy_world_mirror", legacy_key, "World state contains a non-canonical mirror.", {}))
 
 
 static func _check_mapping_shape(state: Dictionary, key: String, issues: Array) -> void:
@@ -89,6 +108,31 @@ static func _check_combat(combat: Dictionary, skills: Dictionary, issues: Array)
 		issues.append(_issue("combat_status_shape", "combat", "Combat status_effects must be a dictionary.", {
 			"value_type": type_string(typeof(combat["status_effects"])),
 		}))
+
+
+static func _check_ground_items(combat: Dictionary, issues: Array) -> void:
+	var ground_items = combat.get("ground_items", [])
+	if not (ground_items is Array):
+		issues.append(_issue("ground_item_shape", "combat", "Combat ground_items must be an array.", {}))
+		return
+	var seen_ids := {}
+	var seen_tiles := {}
+	for item in ground_items:
+		if not (item is Dictionary):
+			issues.append(_issue("ground_item_shape", "combat", "Ground-item entries must be dictionaries.", {}))
+			continue
+		var object_id := str(item.get("object_id", ""))
+		if object_id.is_empty() or seen_ids.has(object_id):
+			issues.append(_issue("ground_item_id", "combat", "Ground-item IDs must be non-empty and unique.", {"object_id": object_id}))
+		seen_ids[object_id] = true
+		var tile = item.get("tile", [])
+		if not (tile is Array) or tile.size() < 2:
+			issues.append(_issue("ground_item_tile", "combat", "Ground items must have a persisted tile.", {"object_id": object_id}))
+			continue
+		var tile_key := "%d,%d" % [int(tile[0]), int(tile[1])]
+		if seen_tiles.has(tile_key):
+			issues.append(_issue("ground_item_collision", "combat", "Persisted ground items must occupy distinct tiles.", {"tile": tile_key}))
+		seen_tiles[tile_key] = true
 
 
 static func _check_quest_state(quest_root: Dictionary, issues: Array) -> void:
